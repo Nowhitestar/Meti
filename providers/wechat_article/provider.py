@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from core.errors import ProviderExecutionError
 from core.provider import (
     CredentialSpec,
     ExecutionResult,
@@ -93,9 +94,77 @@ class WeChatArticleProvider(Provider):
         mode: str,
         credentials: dict[str, str],
     ) -> ExecutionResult:
-        # Implemented in next task
-        raise NotImplementedError("Task 13")
+        if mode == "publish":
+            raise NotImplementedError(
+                "wechat-article publish path not enabled in v0.2; use mode=draft"
+            )
+
+        if mode == "dry-run":
+            return ExecutionResult(status="ok", mode_actual="dry-run", external_id=None)
+
+        # mode == "draft"
+        from providers.wechat_article.internal import wechat_api  # local import: optional dep
+
+        payload_path = run_dir / "packs" / self.name / "payload.json"
+        payload = json.loads(payload_path.read_text(encoding="utf-8"))
+
+        app_id = credentials.get("WECHAT_APP_ID")
+        app_secret = credentials.get("WECHAT_APP_SECRET")
+        if not app_id or not app_secret:
+            raise ProviderExecutionError(
+                target=self.name,
+                step="auth",
+                upstream=ValueError("missing WECHAT_APP_ID or WECHAT_APP_SECRET"),
+                retryable=False,
+            )
+
+        try:
+            token = wechat_api.get_access_token(app_id, app_secret)
+        except Exception as exc:
+            raise ProviderExecutionError(
+                target=self.name, step="get_token", upstream=exc, retryable=True
+            ) from exc
+
+        try:
+            thumb_media_id = wechat_api.upload_thumb(token, Path(payload["cover"]))
+        except Exception as exc:
+            raise ProviderExecutionError(
+                target=self.name, step="upload_thumb", upstream=exc, retryable=True
+            ) from exc
+
+        article = {
+            "title": payload["title"],
+            "thumb_media_id": thumb_media_id,
+            "content": payload["html"],
+            "digest": payload["digest"],
+            "show_cover_pic": 1,
+            "need_open_comment": 0,
+            "only_fans_can_comment": 0,
+        }
+
+        try:
+            draft_id = wechat_api.add_draft(token, [article])
+        except Exception as exc:
+            raise ProviderExecutionError(
+                target=self.name, step="add_draft", upstream=exc, retryable=True
+            ) from exc
+
+        return ExecutionResult(
+            status="ok",
+            mode_actual="draft-platform",
+            external_id=draft_id,
+            extras={"thumb_media_id": thumb_media_id},
+        )
 
     def health_check(self, credentials: dict[str, str]) -> HealthStatus:
-        # Implemented in next task
-        return HealthStatus.unknown
+        from providers.wechat_article.internal import wechat_api
+
+        app_id = credentials.get("WECHAT_APP_ID")
+        app_secret = credentials.get("WECHAT_APP_SECRET")
+        if not (app_id and app_secret):
+            return HealthStatus.failed
+        try:
+            wechat_api.get_access_token(app_id, app_secret)
+            return HealthStatus.ok
+        except Exception:
+            return HealthStatus.failed

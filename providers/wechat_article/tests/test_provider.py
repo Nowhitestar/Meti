@@ -50,3 +50,58 @@ def test_prepare_writes_payload(sample_manifest, tmp_path):
     assert payload["cover"].endswith("cover.png")
     assert "html" in payload
     assert "content" in payload
+
+
+from unittest.mock import patch
+
+
+def test_execute_dry_run_writes_pseudo_draft(sample_manifest, tmp_path):
+    cover = Path(sample_manifest.cover)
+    cover.write_bytes(b"png")
+    run_dir = tmp_path / "run2"
+    (run_dir / "packs" / "wechat-article").mkdir(parents=True)
+    p = WeChatArticleProvider()
+    p.prepare(sample_manifest, sample_manifest.targets[0], run_dir)
+
+    res = p.execute(run_dir, sample_manifest.targets[0], mode="dry-run", credentials={})
+    assert res.status == "ok"
+    assert res.mode_actual == "dry-run"
+    assert res.external_id is None
+
+
+def test_execute_draft_calls_api(sample_manifest, tmp_path):
+    cover = Path(sample_manifest.cover)
+    cover.write_bytes(b"png")
+    run_dir = tmp_path / "run3"
+    (run_dir / "packs" / "wechat-article").mkdir(parents=True)
+    p = WeChatArticleProvider()
+    p.prepare(sample_manifest, sample_manifest.targets[0], run_dir)
+
+    creds = {"WECHAT_APP_ID": "wx", "WECHAT_APP_SECRET": "s"}
+    with patch(
+        "providers.wechat_article.internal.wechat_api.get_access_token",
+        return_value="tok-123",
+    ), patch(
+        "providers.wechat_article.internal.wechat_api.upload_thumb",
+        return_value="thumb-id-1",
+    ), patch(
+        "providers.wechat_article.internal.wechat_api.add_draft",
+        return_value="draft-id-9",
+    ):
+        res = p.execute(run_dir, sample_manifest.targets[0], mode="draft", credentials=creds)
+
+    assert res.status == "ok"
+    assert res.mode_actual == "draft-platform"
+    assert res.external_id == "draft-id-9"
+
+
+def test_execute_publish_refused(sample_manifest, tmp_path):
+    cover = Path(sample_manifest.cover)
+    cover.write_bytes(b"png")
+    run_dir = tmp_path / "run4"
+    (run_dir / "packs" / "wechat-article").mkdir(parents=True)
+    p = WeChatArticleProvider()
+    p.prepare(sample_manifest, sample_manifest.targets[0], run_dir)
+
+    with pytest.raises(NotImplementedError, match="publish"):
+        p.execute(run_dir, sample_manifest.targets[0], mode="publish", credentials={"a": "b"})
