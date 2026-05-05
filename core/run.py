@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -24,10 +24,17 @@ def _now_id() -> str:
 
 
 def slugify(text: str, max_len: int = 40) -> str:
-    """ASCII-friendly lowercase slug. Non-ASCII collapse to hyphens; preserves
-    ASCII alphanumerics."""
+    """ASCII-friendly lowercase slug.
+
+    Non-ASCII characters are dropped (NOT transliterated). Whitespace and
+    underscores collapse to hyphens. Empty / non-word input becomes
+    'untitled'. Max length truncates trailing hyphens.
+    """
     s = (text or "").lower().strip()
-    s = re.sub(r"[^\w\s-]+", "", s, flags=re.UNICODE)
+    # Drop non-ASCII
+    s = s.encode("ascii", "ignore").decode("ascii")
+    # Strip non-(word/whitespace/hyphen)
+    s = re.sub(r"[^\w\s-]+", "", s)
     s = re.sub(r"[\s_]+", "-", s)
     s = re.sub(r"-+", "-", s).strip("-")
     if not s:
@@ -62,11 +69,18 @@ class Run:
 
     @classmethod
     def create(cls, title: str, mmp_version: str, host: str, mode: str) -> "Run":
-        rid = f"{_now_id()}-{slugify(title)}"
-        d = host_runs_dir() / rid
-        d.mkdir(parents=True, exist_ok=True)
+        base_rid = f"{_now_id()}-{slugify(title)}"
+        runs_root = host_runs_dir()
+        # Resolve collision by appending -2, -3, ... if the base_rid dir already exists.
+        rid = base_rid
+        n = 1
+        while (runs_root / rid).exists():
+            n += 1
+            rid = f"{base_rid}-{n}"
+        d = runs_root / rid
+        d.mkdir(parents=True)
         for sub in ("packs", "checkpoints", "artifacts"):
-            (d / sub).mkdir(exist_ok=True)
+            (d / sub).mkdir()
         run = cls(run_id=rid, dir=d, mode=mode, mmp_version=mmp_version, host=host)
         run.log("RUN_START", run_id=rid, mode=mode)
         return run
@@ -148,12 +162,17 @@ class Run:
             "mode": self.mode,
             "host": self.host,
             "mmp_version": self.mmp_version,
-            "targets": [t.__dict__ for t in self.targets],
+            "targets": [asdict(t) for t in self.targets],
         }
         (self.dir / "result.json").write_text(
             json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8"
         )
-        overall = "ok" if all(t.status == "ok" for t in self.targets) else "partial"
+        if not self.targets:
+            overall = "empty"
+        elif all(t.status == "ok" for t in self.targets):
+            overall = "ok"
+        else:
+            overall = "partial"
         self.log("RUN_DONE", overall=overall)
 
 

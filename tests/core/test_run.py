@@ -8,8 +8,11 @@ from core.run import Run, slugify
 
 def test_slugify_basic():
     assert slugify("Hello World") == "hello-world"
-    assert slugify("AI 创业的三个误区").startswith("ai-")
-    assert slugify("a" * 100).__len__() <= 40
+    # Non-ASCII gets stripped; "AI 创业的三个误区" → "ai" only
+    assert slugify("AI 创业的三个误区") == "ai"
+    assert len(slugify("a" * 100)) <= 40
+    assert slugify("") == "untitled"
+    assert slugify("!!!") == "untitled"
 
 
 def test_run_create_dir(tmp_path, monkeypatch):
@@ -69,3 +72,25 @@ def test_resume_loads_existing_dir(tmp_path, monkeypatch):
     r2 = Run.from_dir(run_dir)
     assert r2.run_id == r.run_id
     assert r2.read_checkpoint("x-article")["step"] == "prepared"
+
+
+def test_run_create_avoids_collision(tmp_path, monkeypatch):
+    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
+    r1 = Run.create(title="Same", mmp_version="0.2.0", host="cc", mode="draft")
+    r2 = Run.create(title="Same", mmp_version="0.2.0", host="cc", mode="draft")
+    assert r1.dir != r2.dir
+    assert r1.run_id != r2.run_id
+    # Second one should have a -2 suffix
+    assert r2.run_id.endswith("-2")
+
+
+def test_finalize_with_no_targets(tmp_path, monkeypatch):
+    import json
+    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
+    r = Run.create(title="Empty", mmp_version="0.2.0", host="cc", mode="dry-run")
+    r.finalize()
+    log = (r.dir / "publish-log.md").read_text()
+    assert "RUN_DONE" in log
+    assert "overall=empty" in log
+    data = json.loads((r.dir / "result.json").read_text())
+    assert data["targets"] == []
