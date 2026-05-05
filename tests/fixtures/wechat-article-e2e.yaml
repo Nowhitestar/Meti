@@ -1,0 +1,15 @@
+schema_version: "0.2"
+type: longform
+title: "AI Agent 不是工具"
+body: ./wechat-article-e2e.body.md
+mode: dry-run
+language: zh-CN
+targets:
+  - wechat-article
+assets:
+  cover: ./wechat-article-cover.png
+summary: "一句话摘要 测试"
+tags:
+  - AI
+metadata:
+  digest: "用作公众号文章摘要的字段"
