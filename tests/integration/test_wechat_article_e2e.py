@@ -43,3 +43,20 @@ def test_validate_subcommand(tmp_path):
     )
     assert p.returncode == 0, p.stderr
     assert "OK" in p.stdout
+
+
+def test_run_dir_is_self_contained(tmp_path):
+    p = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "mmp.py"), "publish", str(FIXTURE)],
+        capture_output=True,
+        text=True,
+        env={**__import__("os").environ, "MMP_RUNS_DIR": str(tmp_path / "runs")},
+    )
+    assert p.returncode == 0, p.stderr
+
+    rd = next((tmp_path / "runs").iterdir())
+    manifest_text = (rd / "manifest.yaml").read_text(encoding="utf-8")
+    # Body must be inlined, not a path reference
+    assert "./" not in manifest_text or "body:" not in manifest_text.split("./")[0].split("\n")[-1]
+    # Specifically, the AI Agent body content should be present
+    assert "AI Agent" in manifest_text

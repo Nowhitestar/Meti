@@ -100,9 +100,15 @@ def cmd_publish(args: argparse.Namespace) -> int:
         store = CredentialStore()
 
         run = Run.create(title=m.title, mmp_version="0.2.0", host="cli", mode=m.mode)
-        # copy manifest.yaml
-        Path(run.dir / "manifest.yaml").write_text(
-            Path(args.manifest).read_text(encoding="utf-8"), encoding="utf-8"
+        # Write a self-contained manifest: inline the body so the run dir
+        # doesn't depend on the source dir for resume / forensics.
+        import yaml as _yaml
+
+        src_yaml = _yaml.safe_load(Path(args.manifest).read_text(encoding="utf-8"))
+        src_yaml["body"] = m.body  # inlined / loaded content
+        (run.dir / "manifest.yaml").write_text(
+            _yaml.safe_dump(src_yaml, allow_unicode=True, sort_keys=False),
+            encoding="utf-8",
         )
         write_lock(m, run.dir)
 
