@@ -1,0 +1,16 @@
+type: image-post
+title: "AI 创业的三个误区"
+body: ./caption.md
+mode: draft
+language: zh-CN
+targets:
+  - xiaohongshu
+  - wechat-image
+assets:
+  images:
+    - ./01.png
+    - ./02.png
+tags:
+  - AI
+  - 创业
+cta: "欢迎留言聊聊你的看法。"

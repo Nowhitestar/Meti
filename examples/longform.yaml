@@ -1,0 +1,15 @@
+type: longform
+title: "AI Agent 不是工具，而是一种新的组织形态"
+body: ./article.md
+mode: draft
+language: zh-CN
+targets:
+  - wechat-article
+  - x-article
+  - substack
+assets:
+  cover: ./cover.png
+tags:
+  - AI
+  - Agent
+  - 组织
