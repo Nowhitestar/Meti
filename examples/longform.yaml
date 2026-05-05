@@ -1,15 +1,15 @@
+schema_version: "0.2"
 type: longform
-title: "AI Agent 不是工具，而是一种新的组织形态"
+title: "v0.2 longform example"
 body: ./article.md
-mode: draft
+mode: dry-run
 language: zh-CN
 targets:
   - wechat-article
-  - x-article
-  - substack
 assets:
   cover: ./cover.png
+summary: "示例长文章 v0.2"
 tags:
-  - AI
-  - Agent
-  - 组织
+  - example
+metadata:
+  digest: "示例摘要 used as 公众号 digest"
