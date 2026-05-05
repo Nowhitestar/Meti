@@ -355,3 +355,27 @@ python3 scripts/execute_image_post.py <run-dir> \
 - 本地回归测试
 
 下一任开发者可以直接从“真实 provider 验证”开始，不需要重做架构设计。
+
+---
+
+## v0.2 Redesign — In Progress
+
+Active spec: `docs/superpowers/specs/2026-05-05-multi-media-publisher-redesign-design.md`
+Plans: `docs/superpowers/plans/2026-05-05-plan-{1,2,3,4}-*.md`
+
+### Plan 1 status (this commit range)
+
+- Core architecture: `core/` modules in place (manifest, provider, credentials, run, rules, host, errors)
+- First provider migrated: `wechat_article` (validate + prepare + execute draft + health_check)
+- CLI: `scripts/mmp.py` with validate/publish/setup/list/resume/doctor
+- Tests: unit + integration; `make test` covers lint + typecheck + unit + smoke
+- Old scripts: `wechat_api_draft.py` deprecated (shim only)
+
+### Open items after Plan 1
+
+- Wizard subcommand: stub only; implemented in Plan 2
+- Remaining providers (xiaohongshu / wechat_image / x_article / substack): Plan 3
+- Plugin marketplace prep + CI: Plan 4
+- Real WeChat account verification: see `docs/manual-verification.md` (Plan 4)
+- v0.3 backlog: vault concurrent-write locking, atomic vault write, lost-key UX (deferred from Task 6 review)
+
