@@ -16,7 +16,6 @@ import yaml
 
 from core.errors import ManifestError
 
-
 VALID_TYPES = {"image-post", "longform", "video-post"}
 VALID_MODES = {"dry-run", "draft", "publish"}
 SCHEMA_VERSION = "0.2"

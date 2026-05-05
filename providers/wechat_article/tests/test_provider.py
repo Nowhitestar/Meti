@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -52,9 +53,6 @@ def test_prepare_writes_payload(sample_manifest, tmp_path):
     assert "content" in payload
 
 
-from unittest.mock import patch
-
-
 def test_execute_dry_run_writes_pseudo_draft(sample_manifest, tmp_path):
     cover = Path(sample_manifest.cover)
     cover.write_bytes(b"png")
@@ -78,15 +76,19 @@ def test_execute_draft_calls_api(sample_manifest, tmp_path):
     p.prepare(sample_manifest, sample_manifest.targets[0], run_dir)
 
     creds = {"WECHAT_APP_ID": "wx", "WECHAT_APP_SECRET": "s"}
-    with patch(
-        "providers.wechat_article.internal.wechat_api.get_access_token",
-        return_value="tok-123",
-    ), patch(
-        "providers.wechat_article.internal.wechat_api.upload_thumb",
-        return_value="thumb-id-1",
-    ), patch(
-        "providers.wechat_article.internal.wechat_api.add_draft",
-        return_value="draft-id-9",
+    with (
+        patch(
+            "providers.wechat_article.internal.wechat_api.get_access_token",
+            return_value="tok-123",
+        ),
+        patch(
+            "providers.wechat_article.internal.wechat_api.upload_thumb",
+            return_value="thumb-id-1",
+        ),
+        patch(
+            "providers.wechat_article.internal.wechat_api.add_draft",
+            return_value="draft-id-9",
+        ),
     ):
         res = p.execute(run_dir, sample_manifest.targets[0], mode="draft", credentials=creds)
 

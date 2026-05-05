@@ -8,7 +8,6 @@ The wizard subcommand is implemented in Plan 2.
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 from pathlib import Path
 
@@ -43,7 +42,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sub_resume.add_argument("run_dir")
     sub_resume.add_argument("--target", default=None)
 
-    sub_doctor = sub.add_parser("doctor", help="Self-check: vault, providers, health")
+    sub.add_parser("doctor", help="Self-check: vault, providers, health")
 
     sub_wizard = sub.add_parser("wizard", help="Conversational manifest wizard (Plan 2)")
     sub_wizard.add_argument("--type", choices=["image-post", "longform", "video-post"])
@@ -53,9 +52,9 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
+    from core.errors import MMPError
     from core.manifest import load_manifest
     from core.provider import ProviderRegistry
-    from core.errors import MMPError
 
     try:
         m = load_manifest(args.manifest)
@@ -83,11 +82,11 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_publish(args: argparse.Namespace) -> int:
+    from core.credentials import CredentialStore
+    from core.errors import MMPError
     from core.manifest import load_manifest, write_lock
     from core.provider import ProviderRegistry
-    from core.credentials import CredentialStore
     from core.run import Run
-    from core.errors import MMPError
 
     try:
         m = load_manifest(args.manifest)
@@ -113,8 +112,7 @@ def cmd_publish(args: argparse.Namespace) -> int:
                 provider = reg.resolve(t.name)
                 v_res = provider.validate(m, t)
                 errs = [
-                    v for v in (v_res.violations if v_res else [])
-                    if v.severity.value == "error"
+                    v for v in (v_res.violations if v_res else []) if v.severity.value == "error"
                 ]
                 if errs:
                     run.add_target_result(
@@ -191,6 +189,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
         prompt += ": "
         if spec.secret:
             import getpass
+
             v = getpass.getpass(prompt)
         else:
             v = input(prompt)
@@ -207,6 +206,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
 def cmd_list(args: argparse.Namespace) -> int:
     if args.kind == "providers":
         from core.provider import ProviderRegistry
+
         reg = ProviderRegistry()
         reg.discover()
         for info in reg.list():
@@ -214,11 +214,13 @@ def cmd_list(args: argparse.Namespace) -> int:
             print(f"  {info.name}  ({info.source})  media={info.media_types}  caps={caps}")
     elif args.kind == "accounts":
         from core.credentials import CredentialStore
+
         store = CredentialStore()
         for acc in store.list_accounts():
             print(f"  {acc}")
     elif args.kind == "runs":
         from core import host as h
+
         rd = h.runs_dir()
         if rd.exists():
             for d in sorted(rd.iterdir()):
@@ -234,8 +236,8 @@ def cmd_resume(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     from core import host as h
-    from core.provider import ProviderRegistry
     from core.credentials import CredentialStore
+    from core.provider import ProviderRegistry
 
     print(f"host: {h.detect_host()}")
     print(f"vault: {h.vault_path()}  exists={h.vault_path().exists()}")

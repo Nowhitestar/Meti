@@ -11,7 +11,6 @@ from typing import Any
 
 from core import host
 
-
 _RESULT_SCHEMA_VERSION = 1
 
 
@@ -68,7 +67,7 @@ class Run:
     targets: list[_TargetResult] = field(default_factory=list)
 
     @classmethod
-    def create(cls, title: str, mmp_version: str, host: str, mode: str) -> "Run":
+    def create(cls, title: str, mmp_version: str, host: str, mode: str) -> Run:
         base_rid = f"{_now_id()}-{slugify(title)}"
         runs_root = host_runs_dir()
         # Resolve collision by appending -2, -3, ... if the base_rid dir already exists.
@@ -86,7 +85,7 @@ class Run:
         return run
 
     @classmethod
-    def from_dir(cls, run_dir: Path) -> "Run":
+    def from_dir(cls, run_dir: Path) -> Run:
         # Reconstruct minimal state from disk (used for resume).
         rid = run_dir.name
         mode = "draft"

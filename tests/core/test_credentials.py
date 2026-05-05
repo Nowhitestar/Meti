@@ -18,6 +18,7 @@ def test_env_vault_key_overrides_file(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
     # generate a key out-of-band
     import pyrage
+
     identity = pyrage.x25519.Identity.generate()
     monkeypatch.setenv("MMP_VAULT_KEY", str(identity))
 

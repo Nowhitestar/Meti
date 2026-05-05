@@ -5,15 +5,8 @@ import yaml
 
 from core.errors import ProviderNotFoundError
 from core.provider import (
-    CredentialSpec,
-    PreparedPayload,
-    Provider,
     ProviderRegistry,
-    ExecutionResult,
-    HealthStatus,
-    ValidationResult,
 )
-from core.rules import PlatformRules
 
 
 def _write_provider_dir(root: Path, name: str, snake: str, body: str | None = None) -> Path:
@@ -28,16 +21,16 @@ def _write_provider_dir(root: Path, name: str, snake: str, body: str | None = No
                 "display_name": name,
                 "media_types": ["longform"],
                 "capabilities": {"draft": True, "publish": False, "schedule": False},
-                "required_credentials": [
-                    {"key": "FAKE_KEY", "description": "x", "secret": True}
-                ],
+                "required_credentials": [{"key": "FAKE_KEY", "description": "x", "secret": True}],
                 "entry": "provider:FakeProvider",
                 "schema_version": 1,
             }
         ),
         encoding="utf-8",
     )
-    pdir_body = body or '''
+    pdir_body = (
+        body
+        or f'''
 from core.provider import Provider
 from core.rules import PlatformRules
 
@@ -58,7 +51,8 @@ class FakeProvider(Provider):
 
     def execute(self, run_dir, target, mode, credentials):
         return None
-'''.format(name=name)
+'''
+    )
     (pdir / "provider.py").write_text(pdir_body)
     return pdir
 

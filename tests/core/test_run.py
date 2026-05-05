@@ -1,7 +1,4 @@
 import json
-from pathlib import Path
-
-import pytest
 
 from core.run import Run, slugify
 
@@ -86,6 +83,7 @@ def test_run_create_avoids_collision(tmp_path, monkeypatch):
 
 def test_finalize_with_no_targets(tmp_path, monkeypatch):
     import json
+
     monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
     r = Run.create(title="Empty", mmp_version="0.2.0", host="cc", mode="dry-run")
     r.finalize()

@@ -15,7 +15,6 @@ from core.provider import (
     Provider,
     ValidationResult,
 )
-
 from providers.wechat_article.rules import WECHAT_ARTICLE_RULES
 
 
@@ -80,9 +79,7 @@ class WeChatArticleProvider(Provider):
             "options": dict(target.options or {}),
         }
         payload_path = pack_dir / "payload.json"
-        payload_path.write_text(
-            json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8"
-        )
+        payload_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
         (pack_dir / "content.md").write_text(body_md, encoding="utf-8")
 
         return PreparedPayload(pack_dir=pack_dir, payload_path=payload_path)

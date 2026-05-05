@@ -9,6 +9,7 @@ Public API:
     add_draft(token, articles) -> str       # returns media_id
     draft_from_payload(payload, credentials, dry_run) -> dict
 """
+
 from __future__ import annotations
 
 import html
@@ -44,9 +45,7 @@ def _get_json(url: str) -> dict[str, Any]:
         return json.loads(resp.read().decode("utf-8"))
 
 
-def _multipart_upload(
-    url: str, field_name: str, file_path: pathlib.Path
-) -> dict[str, Any]:
+def _multipart_upload(url: str, field_name: str, file_path: pathlib.Path) -> dict[str, Any]:
     boundary = "----OpenClawMMPBoundary"
     ctype = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
     body = []
@@ -88,9 +87,7 @@ def _local_markdown_to_html(text: str) -> str:
     return "\n".join(parts)
 
 
-def _article_from_payload(
-    payload: dict[str, Any], thumb_media_id: str | None
-) -> dict[str, Any]:
+def _article_from_payload(payload: dict[str, Any], thumb_media_id: str | None) -> dict[str, Any]:
     content = str(payload.get("html") or "")
     if not content:
         content = _local_markdown_to_html(str(payload.get("content") or ""))
@@ -109,9 +106,7 @@ def _article_from_payload(
     if not article["content"]:
         raise ValueError("content/html is required")
     if not article["thumb_media_id"]:
-        raise ValueError(
-            "thumb_media_id is required; provide it or upload a cover image first"
-        )
+        raise ValueError("thumb_media_id is required; provide it or upload a cover image first")
     return article
 
 
@@ -130,9 +125,7 @@ def get_access_token(app_id: str, app_secret: str) -> str:
     if env:
         return env
     if not app_id or not app_secret:
-        raise ValueError(
-            "app_id and app_secret are required unless WECHAT_ACCESS_TOKEN is set"
-        )
+        raise ValueError("app_id and app_secret are required unless WECHAT_ACCESS_TOKEN is set")
     url = f"{API_BASE}/token?" + urllib.parse.urlencode(
         {"grant_type": "client_credential", "appid": app_id, "secret": app_secret}
     )
@@ -186,28 +179,18 @@ def draft_from_payload(
         ``{"ok": True, "upload": <upload_info_or_None>, "draft": <draft_info>}``
     """
     app_id = str(credentials.get("app_id") or os.environ.get("WECHAT_APP_ID") or "")
-    app_secret = str(
-        credentials.get("app_secret") or os.environ.get("WECHAT_APP_SECRET") or ""
-    )
+    app_secret = str(credentials.get("app_secret") or os.environ.get("WECHAT_APP_SECRET") or "")
     explicit_token = credentials.get("access_token") or _env_token()
 
     if dry_run:
         token = str(explicit_token or "DRY_RUN_TOKEN")
     else:
-        token = (
-            str(explicit_token)
-            if explicit_token
-            else get_access_token(app_id, app_secret)
-        )
+        token = str(explicit_token) if explicit_token else get_access_token(app_id, app_secret)
 
     thumb_media_id = payload.get("thumb_media_id")
     upload_result: dict[str, Any] | None = None
     cover_raw = payload.get("cover")
-    cover = (
-        pathlib.Path(str(cover_raw)).expanduser()
-        if cover_raw and not thumb_media_id
-        else None
-    )
+    cover = pathlib.Path(str(cover_raw)).expanduser() if cover_raw and not thumb_media_id else None
 
     if not thumb_media_id and cover:
         if dry_run:
@@ -230,9 +213,7 @@ def draft_from_payload(
     article = _article_from_payload(payload, thumb_media_id)
 
     if dry_run:
-        draft_url = f"{API_BASE}/draft/add?" + urllib.parse.urlencode(
-            {"access_token": token}
-        )
+        draft_url = f"{API_BASE}/draft/add?" + urllib.parse.urlencode({"access_token": token})
         draft_result: dict[str, Any] = {
             "ok": True,
             "dry_run": True,
