@@ -24,7 +24,7 @@ from typing import Any
 import yaml
 
 from core.errors import ProviderNotFoundError
-from core.rules import PlatformRules
+from core.rules import PlatformRules, Violation
 
 
 class HealthStatus(str, Enum):
@@ -43,7 +43,7 @@ class CredentialSpec:
 
 @dataclass
 class ValidationResult:
-    violations: list = field(default_factory=list)
+    violations: list[Violation] = field(default_factory=list)
 
 
 @dataclass
@@ -107,6 +107,14 @@ class ProviderRegistry:
         self._info: dict[str, ProviderInfo] = {}
 
     def discover(self, trust_user: bool = False) -> None:
+        """Scan bundled and (optionally) user provider directories.
+
+        ``trust_user`` is the POST-confirmation gate, not a bypass.
+        Pass True only after the user has explicitly confirmed loading
+        each user-installed provider (typically via SKILL.md prompt
+        and a write to ``settings.toml.providers.trusted_user_providers``).
+        Tests pass True directly to exercise the override path.
+        """
         self._providers.clear()
         self._info.clear()
         # bundled first
@@ -144,7 +152,8 @@ class ProviderRegistry:
         spec = importlib.util.spec_from_file_location(
             mod_name, module_path, submodule_search_locations=[str(pdir)]
         )
-        assert spec and spec.loader
+        if not spec or not spec.loader:
+            raise FileNotFoundError(f"cannot create import spec for provider at {module_path}")
         module = importlib.util.module_from_spec(spec)
         sys.modules[mod_name] = module
         spec.loader.exec_module(module)
