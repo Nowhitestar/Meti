@@ -1,0 +1,149 @@
+#!/usr/bin/env python3
+"""Execute prepared image-post run actions safely.
+
+Supported now:
+- xiaohongshu local draft creation via local xiaohongshu skill script.
+- wechat-image instruction bundle generation only; browser execution remains manual/agent-guided.
+
+This script never performs public publish. It refuses publish mode unless a future
+executor implements an explicit confirmation token.
+"""
+from __future__ import annotations
+
+import argparse
+import datetime as dt
+import json
+import os
+import pathlib
+import subprocess
+import sys
+from typing import Any
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+WORKSPACE = ROOT.parents[1]
+XHS_DRAFT = pathlib.Path(os.environ.get("MMP_XHS_DRAFT_SH", str(WORKSPACE / "skills" / "xiaohongshu" / "scripts" / "draft.sh")))
+
+
+def load_json(path: pathlib.Path) -> dict[str, Any]:
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def write_json(path: pathlib.Path, data: dict[str, Any]) -> None:
+    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def append_result(run_dir: pathlib.Path, item: dict[str, Any]) -> None:
+    result_path = run_dir / "result.json"
+    data = load_json(result_path) if result_path.exists() else {"status": "started", "results": []}
+    data.setdefault("results", []).append(item)
+    if item.get("status") == "error":
+        data["status"] = "partial_error"
+    elif data.get("status") not in {"partial_error", "blocked"}:
+        data["status"] = "executed"
+    write_json(result_path, data)
+
+
+def target_payload(run_dir: pathlib.Path, target: str) -> tuple[pathlib.Path, dict[str, Any]]:
+    path = run_dir / "packs" / target / "payload.json"
+    if not path.exists():
+        raise SystemExit(f"payload not found for target {target}: {path}")
+    return path, load_json(path)
+
+
+def ensure_draft_mode(payload: dict[str, Any], allow_external: bool) -> None:
+    mode = payload.get("mode", "draft")
+    if mode != "draft":
+        raise SystemExit("execute_image_post.py currently supports draft mode only; public publish is intentionally blocked")
+    if not allow_external:
+        raise SystemExit("external draft creation requires --yes-draft after user confirmation")
+
+
+def xiaohongshu_local_draft(run_dir: pathlib.Path, payload_path: pathlib.Path, payload: dict[str, Any], yes_draft: bool) -> int:
+    ensure_draft_mode(payload, yes_draft)
+    if not XHS_DRAFT.exists():
+        append_result(run_dir, {"target": "xiaohongshu", "status": "error", "action": "local-draft", "error": f"missing script: {XHS_DRAFT}", "timestamp": now()})
+        return 2
+    cmd = [str(XHS_DRAFT), json.dumps({k: payload[k] for k in ["title", "content", "images", "tags"] if k in payload}, ensure_ascii=False)]
+    proc = subprocess.run(cmd, cwd=str(XHS_DRAFT.parent), text=True, capture_output=True)
+    item = {
+        "target": "xiaohongshu",
+        "status": "ok" if proc.returncode == 0 else "error",
+        "action": "local-draft",
+        "command": "skills/xiaohongshu/scripts/draft.sh <payload-json>",
+        "payload": str(payload_path),
+        "timestamp": now(),
+        "returncode": proc.returncode,
+        "stdout": proc.stdout[-4000:],
+        "stderr": proc.stderr[-4000:],
+    }
+    append_result(run_dir, item)
+    return proc.returncode
+
+
+def wechat_instruction(run_dir: pathlib.Path, payload_path: pathlib.Path, payload: dict[str, Any]) -> int:
+    out = run_dir / "packs" / "wechat-image" / "browser-flow.md"
+    images = "\n".join(f"- {p}" for p in payload.get("images") or []) or "- (none)"
+    out.write_text(f"""# WeChat Image Draft Browser Flow
+
+This is a prepared execution guide. Do not public-publish without explicit confirmation.
+
+## Payload
+
+- Title: {payload.get('title', '')}
+- Mode: {payload.get('mode', 'draft')}
+- Cover: {payload.get('cover') or '(none)'}
+- Payload file: {payload_path}
+
+## Images
+
+{images}
+
+## Content
+
+{payload.get('content', '')}
+
+## Draft-first Steps
+
+1. Open the relevant WeChat publishing backend/UI while logged into the correct account.
+2. Navigate to the image/text content creation page for 微信图文内容.
+3. Fill title and content from this payload.
+4. Upload images in order; use the first image as cover when the UI requires one.
+5. Stop at preview/save-draft. Do not group-send or public publish.
+6. Record screenshot, draft URL/status, and any UI mismatch in `result.json`.
+
+## Calibration Note
+
+The first real run must verify whether the target is 微信图文内容 feed-style publishing or 微信公众号文章 drafting. Update `references/image-post-mvp.md` after calibration.
+""", encoding="utf-8")
+    append_result(run_dir, {"target": "wechat-image", "status": "prepared", "action": "browser-flow-guide", "guide": str(out), "payload": str(payload_path), "timestamp": now()})
+    return 0
+
+
+def now() -> str:
+    return dt.datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("run_dir", type=pathlib.Path, help="Run directory generated by prepare_image_post.py")
+    ap.add_argument("--target", choices=["xiaohongshu", "wechat-image", "all"], default="all")
+    ap.add_argument("--yes-draft", action="store_true", help="User confirmed external draft creation. Required for Xiaohongshu local draft creation.")
+    args = ap.parse_args()
+
+    run_dir = args.run_dir.resolve()
+    if not run_dir.exists():
+        raise SystemExit(f"run_dir not found: {run_dir}")
+
+    targets = ["xiaohongshu", "wechat-image"] if args.target == "all" else [args.target]
+    rc = 0
+    for target in targets:
+        payload_path, payload = target_payload(run_dir, target)
+        if target == "xiaohongshu":
+            rc = max(rc, xiaohongshu_local_draft(run_dir, payload_path, payload, args.yes_draft))
+        elif target == "wechat-image":
+            rc = max(rc, wechat_instruction(run_dir, payload_path, payload))
+    return rc
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
