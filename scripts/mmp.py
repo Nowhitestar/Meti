@@ -1,0 +1,273 @@
+#!/usr/bin/env python3
+"""multi-media-publisher unified CLI entry.
+
+Subcommands: validate, publish, setup, list, resume, doctor, wizard.
+The wizard subcommand is implemented in Plan 2.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="mmp", description="multi-media-publisher CLI")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    sub_validate = sub.add_parser("validate", help="Validate a manifest without executing")
+    sub_validate.add_argument("manifest", help="Path to manifest.yaml")
+
+    sub_publish = sub.add_parser("publish", help="Run prepare+execute for a manifest")
+    sub_publish.add_argument("manifest", help="Path to manifest.yaml")
+    sub_publish.add_argument(
+        "--mode-override",
+        choices=["dry-run", "draft", "publish"],
+        default=None,
+        help="Override manifest top-level mode (CAUTION with publish)",
+    )
+
+    sub_setup = sub.add_parser("setup", help="Configure credentials for a provider")
+    sub_setup.add_argument("provider", help="Provider name (e.g. wechat-article)")
+    sub_setup.add_argument("--account", default="default")
+
+    sub_list = sub.add_parser("list", help="List providers / accounts / runs")
+    sub_list.add_argument("kind", choices=["providers", "accounts", "runs"])
+
+    sub_resume = sub.add_parser("resume", help="Resume a previously failed run")
+    sub_resume.add_argument("run_dir")
+    sub_resume.add_argument("--target", default=None)
+
+    sub_doctor = sub.add_parser("doctor", help="Self-check: vault, providers, health")
+
+    sub_wizard = sub.add_parser("wizard", help="Conversational manifest wizard (Plan 2)")
+    sub_wizard.add_argument("--type", choices=["image-post", "longform", "video-post"])
+    sub_wizard.add_argument("--targets", default=None, help="Comma-separated target names")
+
+    return p
+
+
+def cmd_validate(args: argparse.Namespace) -> int:
+    from core.manifest import load_manifest
+    from core.provider import ProviderRegistry
+    from core.errors import MMPError
+
+    try:
+        m = load_manifest(args.manifest)
+        reg = ProviderRegistry()
+        reg.discover()
+        all_violations = []
+        for t in m.targets:
+            provider = reg.resolve(t.name)
+            res = provider.validate(m, t)
+            if res:
+                all_violations.extend(res.violations)
+        errs = [v for v in all_violations if v.severity.value == "error"]
+        warns = [v for v in all_violations if v.severity.value == "warning"]
+        for v in errs:
+            print(f"ERROR  {v.target}  {v.code}  {v.message}", file=sys.stderr)
+        for v in warns:
+            print(f"WARN   {v.target}  {v.code}  {v.message}", file=sys.stderr)
+        if errs:
+            return 2
+        print(f"OK  {len(m.targets)} targets validated.")
+        return 0
+    except MMPError as e:
+        print(f"ERROR  {e}", file=sys.stderr)
+        return 2
+
+
+def cmd_publish(args: argparse.Namespace) -> int:
+    from core.manifest import load_manifest, write_lock
+    from core.provider import ProviderRegistry
+    from core.credentials import CredentialStore
+    from core.run import Run
+    from core.errors import MMPError
+
+    try:
+        m = load_manifest(args.manifest)
+        if args.mode_override:
+            m.mode = args.mode_override
+            for t in m.targets:
+                t.mode = args.mode_override
+
+        reg = ProviderRegistry()
+        reg.discover()
+        store = CredentialStore()
+
+        run = Run.create(title=m.title, mmp_version="0.2.0", host="cli", mode=m.mode)
+        # copy manifest.yaml
+        Path(run.dir / "manifest.yaml").write_text(
+            Path(args.manifest).read_text(encoding="utf-8"), encoding="utf-8"
+        )
+        write_lock(m, run.dir)
+
+        for t in m.targets:
+            run.log("TARGET_START", target=t.name, account=t.account)
+            try:
+                provider = reg.resolve(t.name)
+                v_res = provider.validate(m, t)
+                errs = [
+                    v for v in (v_res.violations if v_res else [])
+                    if v.severity.value == "error"
+                ]
+                if errs:
+                    run.add_target_result(
+                        name=t.name,
+                        account=t.account,
+                        status="failed",
+                        mode_actual="dry-run",
+                        error=f"validation: {[v.code for v in errs]}",
+                        violations=[v.__dict__ for v in errs],
+                    )
+                    run.log("VALIDATE_FAIL", target=t.name, codes=[v.code for v in errs])
+                    continue
+
+                provider.prepare(m, t, run.dir)
+                run.log("PREPARE_OK", target=t.name)
+
+                creds = {}
+                if t.mode != "dry-run":
+                    required = [c.key for c in provider.required_credentials]
+                    creds = store.get(t.name, t.account, required_keys=required)
+
+                exec_res = provider.execute(run.dir, t, t.mode, creds)
+                run.add_target_result(
+                    name=t.name,
+                    account=t.account,
+                    status=exec_res.status,
+                    mode_actual=exec_res.mode_actual,
+                    external_id=exec_res.external_id,
+                    draft_url=exec_res.draft_url,
+                )
+                run.log(
+                    "EXECUTE_OK",
+                    target=t.name,
+                    mode_actual=exec_res.mode_actual,
+                    external_id=exec_res.external_id,
+                )
+            except Exception as exc:
+                run.add_target_result(
+                    name=t.name,
+                    account=t.account,
+                    status="failed",
+                    mode_actual=t.mode,
+                    error=str(exc),
+                )
+                run.log("TARGET_FAIL", target=t.name, error=str(exc))
+
+        run.finalize()
+        print(f"RUN_DIR  {run.dir}")
+        return 0
+    except MMPError as e:
+        print(f"ERROR  {e}", file=sys.stderr)
+        return 2
+
+
+def cmd_setup(args: argparse.Namespace) -> int:
+    from core.credentials import CredentialStore
+    from core.provider import ProviderRegistry
+
+    reg = ProviderRegistry()
+    reg.discover()
+    try:
+        provider = reg.resolve(args.provider)
+    except Exception as e:
+        print(f"ERROR  {e}", file=sys.stderr)
+        return 2
+
+    store = CredentialStore()
+    values: dict[str, str] = {}
+    print(f"Configure {args.provider} (account: {args.account}). Press Enter to skip a key.")
+    for spec in provider.required_credentials:
+        prompt = f"  {spec.key}"
+        if spec.description:
+            prompt += f" ({spec.description})"
+        prompt += ": "
+        if spec.secret:
+            import getpass
+            v = getpass.getpass(prompt)
+        else:
+            v = input(prompt)
+        if v:
+            values[spec.key] = v
+    if values:
+        store.set(args.provider, args.account, values)
+        print(f"OK  saved {len(values)} keys to vault.")
+    else:
+        print("nothing to save.")
+    return 0
+
+
+def cmd_list(args: argparse.Namespace) -> int:
+    if args.kind == "providers":
+        from core.provider import ProviderRegistry
+        reg = ProviderRegistry()
+        reg.discover()
+        for info in reg.list():
+            caps = ",".join(k for k, v in info.capabilities.items() if v)
+            print(f"  {info.name}  ({info.source})  media={info.media_types}  caps={caps}")
+    elif args.kind == "accounts":
+        from core.credentials import CredentialStore
+        store = CredentialStore()
+        for acc in store.list_accounts():
+            print(f"  {acc}")
+    elif args.kind == "runs":
+        from core import host as h
+        rd = h.runs_dir()
+        if rd.exists():
+            for d in sorted(rd.iterdir()):
+                if d.is_dir():
+                    print(f"  {d.name}")
+    return 0
+
+
+def cmd_resume(args: argparse.Namespace) -> int:
+    print("resume not implemented in Plan 1; coming soon.", file=sys.stderr)
+    return 1
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    from core import host as h
+    from core.provider import ProviderRegistry
+    from core.credentials import CredentialStore
+
+    print(f"host: {h.detect_host()}")
+    print(f"vault: {h.vault_path()}  exists={h.vault_path().exists()}")
+    reg = ProviderRegistry()
+    reg.discover()
+    print(f"providers: {len(reg.list())}")
+    store = CredentialStore()
+    print(f"accounts: {len(store.list_accounts())}")
+    return 0
+
+
+def cmd_wizard(args: argparse.Namespace) -> int:
+    print("wizard subcommand will be implemented in Plan 2.", file=sys.stderr)
+    return 1
+
+
+_DISPATCH = {
+    "validate": cmd_validate,
+    "publish": cmd_publish,
+    "setup": cmd_setup,
+    "list": cmd_list,
+    "resume": cmd_resume,
+    "doctor": cmd_doctor,
+    "wizard": cmd_wizard,
+}
+
+
+def main(argv: list[str] | None = None) -> int:
+    p = _build_parser()
+    args = p.parse_args(argv)
+    return _DISPATCH[args.cmd](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
