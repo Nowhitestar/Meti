@@ -9,10 +9,10 @@ Vault layout (decrypted JSON):
     }
   }
 
-ENV-only fallback: when neither the vault nor required_keys give us anything,
-we scan os.environ for keys whose name starts with the provider's prefix
-(uppercase of the first hyphen-segment, e.g. ``wechat-article`` -> ``WECHAT_``)
-and return those. ENV always wins over the vault.
+ENV always wins over the vault: any key already present in the vault is
+overridden by an os.environ entry with the same name. To pull keys that
+exist *only* in the environment (e.g. on CI with EnvBackend), callers must
+pass ``required_keys=[...]`` explicitly.
 """
 
 from __future__ import annotations
@@ -32,22 +32,6 @@ _VAULT_VERSION = 1
 
 def _ensure_dir(p: Path) -> None:
     p.mkdir(parents=True, exist_ok=True)
-
-
-def _provider_env_prefix(provider: str) -> str:
-    """Derive the ENV-var prefix for a provider name.
-
-    ``wechat-article`` -> ``WECHAT_``
-    ``xiaohongshu`` -> ``XIAOHONGSHU_``
-    """
-    head = provider.split("-", 1)[0]
-    return f"{head.upper()}_"
-
-
-def _env_scan(provider: str) -> dict[str, str]:
-    """Return all os.environ entries whose key starts with the provider prefix."""
-    prefix = _provider_env_prefix(provider)
-    return {k: v for k, v in os.environ.items() if k.startswith(prefix)}
 
 
 def _read_or_create_key(key_path: Path) -> tuple[pyrage.x25519.Identity, pyrage.x25519.Recipient]:
@@ -159,10 +143,6 @@ class CredentialStore:
             if missing:
                 raise MissingCredentialError(provider=provider, keys=missing)
             return {k: merged[k] for k in required_keys}
-
-        # No vault hit + no required_keys: fall back to provider-prefixed env scan.
-        if not merged:
-            merged = _env_scan(provider)
 
         if not merged:
             raise MissingCredentialError(provider=provider, keys=["*"])

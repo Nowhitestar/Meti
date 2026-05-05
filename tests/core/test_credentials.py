@@ -93,7 +93,11 @@ def test_env_only_backend(monkeypatch):
     monkeypatch.setenv("WECHAT_APP_ID", "ww")
     monkeypatch.setenv("WECHAT_APP_SECRET", "ss")
     store = CredentialStore(backend=EnvBackend())
-    out = store.get("wechat-article", "default")
+    out = store.get(
+        "wechat-article",
+        "default",
+        required_keys=["WECHAT_APP_ID", "WECHAT_APP_SECRET"],
+    )
     assert out == {"WECHAT_APP_ID": "ww", "WECHAT_APP_SECRET": "ss"}
 
 
