@@ -144,7 +144,14 @@ def _resolve_inline_or_path(value: Any, base_dir: Path) -> str:
     if not isinstance(value, str):
         raise ManifestError("body must be a string (inline) or path string")
     s = value.strip()
-    if s.startswith("./") or s.startswith("../") or s.endswith(".md"):
+    # Explicit path: ./ or ../ prefix => MUST resolve, error if missing.
+    if s.startswith("./") or s.startswith("../"):
+        candidate = (base_dir / s).resolve()
+        if not candidate.exists():
+            raise ManifestError(f"body path not found: {candidate} (from {value!r})")
+        return candidate.read_text(encoding="utf-8")
+    # Heuristic: .md suffix without explicit prefix => path if exists, else inline.
+    if s.endswith(".md"):
         candidate = (base_dir / s).resolve()
         if candidate.exists():
             return candidate.read_text(encoding="utf-8")

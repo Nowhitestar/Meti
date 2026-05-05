@@ -111,3 +111,13 @@ def test_defaults_block_applied(tmp_path):
     m = load_manifest(p)
     assert m.targets[0].account == "lewis"
     assert m.targets[0].options == {"digest": "hi"}
+
+
+def test_body_path_explicit_missing_raises(tmp_path):
+    p = tmp_path / "m.yaml"
+    p.write_text(
+        'schema_version: "0.2"\ntype: longform\ntitle: x\n'
+        'body: ./missing.md\nmode: dry-run\ntargets: [wechat-article]\n'
+    )
+    with pytest.raises(ManifestError, match="body path not found"):
+        load_manifest(p)
