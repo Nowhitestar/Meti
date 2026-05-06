@@ -59,7 +59,9 @@ def main() -> int:
             assert prov in p.stdout, f"{prov} missing from list"
 
         runs = sorted((runs_dir).iterdir())
-        print(json.dumps({"ok": True, "tmp": str(tmp_path), "runs": [str(r) for r in runs]}, indent=2))
+        print(
+            json.dumps({"ok": True, "tmp": str(tmp_path), "runs": [str(r) for r in runs]}, indent=2)
+        )
         return 0
 
 

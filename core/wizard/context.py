@@ -73,9 +73,7 @@ def build_context(
                 {"name": acct, "status": _account_status(store, info.name, acct, keys)}
                 for acct in sorted(provider_accounts)
             ]
-            cred_status = (
-                "ok" if any(a["status"] == "ok" for a in accounts_detail) else "missing"
-            )
+            cred_status = "ok" if any(a["status"] == "ok" for a in accounts_detail) else "missing"
 
         providers_out.append(
             {

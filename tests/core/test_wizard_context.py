@@ -155,6 +155,7 @@ def test_context_per_account_credential_status(tmp_path, monkeypatch):
 
     # Configure 'lewis' account (not 'default')
     from core.credentials import CredentialStore, FileBackend
+
     store = CredentialStore(backend=FileBackend())
     store.set("needy", "lewis", {"FOO": "bar"})
 
@@ -175,6 +176,7 @@ def test_context_accounts_grouped_by_provider(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
 
     from core.credentials import CredentialStore, FileBackend
+
     store = CredentialStore(backend=FileBackend())
     store.set("p-one", "default", {"K": "v"})
     store.set("p-one", "alt", {"K": "v"})
