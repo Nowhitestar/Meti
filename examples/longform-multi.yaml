@@ -1,0 +1,18 @@
+schema_version: "0.2"
+type: longform
+title: "v0.2 multi-target longform example"
+body: ./article.md
+mode: dry-run
+language: zh-CN
+targets:
+  - wechat-article
+  - x-article
+  - substack
+assets:
+  cover: ./cover.png
+summary: "示例长文章 multi-target 版本"
+tags:
+  - example
+metadata:
+  digest: "公众号摘要 (max 120)"
+  subtitle: "Substack subtitle"
