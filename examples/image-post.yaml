@@ -1,6 +1,6 @@
 schema_version: "0.2"
 type: image-post
-title: "v0.2 image-post example"
+title: "v0.2 图文示例"
 body: ./caption.md
 mode: dry-run
 language: zh-CN
