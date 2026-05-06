@@ -78,7 +78,10 @@ def load_manifest(path: str | Path) -> Manifest:
     p = Path(path).resolve()
     if not p.exists():
         raise ManifestError(f"manifest not found: {p}")
-    raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    try:
+        raw = yaml.safe_load(p.read_text(encoding="utf-8"))
+    except yaml.YAMLError as e:
+        raise ManifestError(f"invalid YAML in manifest {p}: {e}") from e
     if not isinstance(raw, dict):
         raise ManifestError(f"manifest must be a YAML mapping at top level: {p}")
     return _from_dict(raw, base_dir=p.parent, source=p)
