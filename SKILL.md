@@ -1,92 +1,125 @@
 ---
 name: Multi-media Publisher
-# keep trigger concrete so the router loads this skill before lower-level platform skills
-description: This skill should be used when the user asks to "多媒体发布", "多平台发布", "同步发布小红书和微信图文", "发微信图文和小红书", "发布长文章到公众号/X/Substack", "cross-post", "publish everywhere", or wants one content package adapted and published/drafted across Xiaohongshu, WeChat image posts, WeChat Official Account articles, X Articles/Twitter, Substack, or future video platforms.
-version: 0.1.0
+description: This skill should be used when the user asks to "多媒体发布", "多平台发布", "同步发布小红书和微信图文", "发微信图文和小红书", "发布长文章到公众号/X/Substack", "cross-post", "publish everywhere", or wants one content package adapted and published/drafted across Xiaohongshu, WeChat image posts, WeChat Official Account articles, X Articles/Twitter, Substack, or future video platforms; or "新发布", "帮我发一组到", "wizard", "guide me to publish".
+version: 0.2.0
 ---
 
 # Multi-media Publisher / 多媒体发布
 
-Act as the orchestration layer for cross-platform publishing. Do not replace mature platform-specific skills; route to them with a shared manifest, consistent approval policy, and post-run logging.
+Cross-platform content publishing orchestration. Routes one source content
+package to multiple platform providers via a unified manifest, draft-first
+safety policy, and per-platform rules.
 
-## Core Principle
+## When to use
 
-Separate content by media form first, platform second:
+- User wants to publish/draft the same content across multiple platforms
+- User wants to add a new platform/provider
+- User needs to validate a manifest, set up credentials, or inspect runs
 
-1. **image-post / 图文内容** — social image feed posts, currently Xiaohongshu + WeChat image posts. Treat WeChat 图文内容 as analogous to Xiaohongshu image posts, not as WeChat Official Account long articles.
-2. **longform / 长文章** — Markdown/HTML/article publishing, currently WeChat Official Account article + X Articles + Substack.
-3. **video-post / 视频内容** — reserved extension point for Xiaohongshu video, WeChat Channels, Douyin, Bilibili, YouTube Shorts, etc.
+## Entry point
 
-Default to **draft mode**. Any external publish/send action requires explicit user confirmation in the current conversation unless the user already gave clear, specific approval for the exact targets and content.
+All operations go through `scripts/mmp.py`:
 
-## Workflow
+```bash
+python3 scripts/mmp.py <subcommand> [args]
+```
 
-1. **Classify the request**
-   - Use `image-post` for 小红书图文, 微信图文内容, image carousel posts, social image posts.
-   - Use `longform` for 公众号文章, X Articles, Twitter long article, Substack, newsletter/blog essays.
-   - Use `video-post` only as a planned/experimental path unless a video publisher is explicitly configured.
+Subcommands:
 
-2. **Create or request a manifest**
-   - If the user provides files/content, normalize them into the manifest format in `references/manifest-schema.md`.
-   - If required fields are missing, ask only for the blocking field: usually body/content path, image assets, or target platforms.
-   - Prefer writing a manifest under `skills/multi-media-publisher/runs/<timestamp>-<slug>/manifest.yaml` for real runs.
+- `validate <manifest.yaml>` — validate without executing
+- `publish <manifest.yaml> [--mode-override ...]` — prepare + execute
+- `setup <provider> [--account NAME]` — configure credentials
+- `list providers|accounts|runs` — inspect state
+- `resume <run-dir> [--target NAME]` — recover failed run
+- `doctor` — self-check
+- `wizard [--type ... --targets ...]` — conversational manifest builder
 
-3. **Adapt content per platform**
-   - Consult `references/platform-map.md` for target capabilities and preferred lower-level skills.
-   - Preserve the user's source content. Platform-specific adaptation may change title length, hook, caption, tags, frontmatter, or CTA, but should not silently change core claims.
-   - Use `scripts/adapt_content.py` for deterministic manifest-to-platform pack scaffolding when useful.
+## Default mode = draft
 
-4. **Plan before external action**
-   - Show the target list, mode (`draft` or `publish`), and any risky assumptions.
-   - For draft creation, ask confirmation if it touches external services.
-   - For public publish, require explicit confirmation even if drafts were already approved.
+Every run defaults to `mode: draft`. Public publishing requires explicit
+top-level `mode: publish` AND a second confirmation in conversation.
 
-5. **Dispatch to lower-level skills/tools**
-   - Xiaohongshu: use the local `xiaohongshu` skill and prefer platform draft before final publish.
-   - WeChat image post: use `lsmonet/social-media-publish` / `social-media-publish` after installation/verification.
-   - WeChat Official Account article: use `wenyan`, `wenyan-publish`, or a verified wenyan-based publisher.
-   - X Articles: use `x-articles` when installed/verified. Use Twitter/X post skills only for tweets/threads, not long articles.
-   - Substack: prefer draft/review flow (`substack-autopilot` or a verified generic Substack publisher) until account-specific publishing is confirmed.
-   - Video: consult `references/candidate-skills.md`; do not improvise video publishing.
+## Wizard Mode
 
-6. **Record results**
-   - Write `result.json` or append to `publish-log.md` in the run directory.
-   - Include target, status, mode, draft URL/public URL if available, timestamp, and error message.
-   - If a target fails, continue only when independent and safe; otherwise stop and report the blocker.
+When the user says "新发布", "帮我发一组到 X / Y", "publish to ...", "cross-post",
+or pastes content with publishing intent, run the **3-stage wizard** instead of
+asking them to write a manifest:
 
-## Safety and Approval Rules
+1. **Stage 1 — Source Extraction**: read `core/wizard/source_extraction.md` and
+   follow the instructions there. Extract `type`, `title`, `body`, `cover`,
+   `images`, `tags`, `cta` into your conversation memory. Don't write files yet.
 
-Follow `references/publishing-policy.md` strictly:
+2. **Stage 2 — Target Selection**: read `core/wizard/target_selection.md`. Run
+   `python3 scripts/mmp.py wizard --dump-context --type <T>` to fetch available
+   providers + credential status + accounts. Ask which targets, modes, accounts.
 
-- Never publish publicly without explicit confirmation.
-- Never bypass account login, CAPTCHA, platform review, or anti-abuse safeguards.
-- Prefer draft/save flows over direct publish.
-- Treat cookies, API tokens, AppID/AppSecret, and session files as secrets; never print them.
-- If browser automation reaches an ambiguous screen, stop and ask.
+3. **Stage 3 — Manifest Assembly**: read `core/wizard/manifest_assembly.md`.
+   Render YAML, write to a temp file, validate via `python3 scripts/mmp.py validate`,
+   show the user, get approval. On approve, run `python3 scripts/mmp.py wizard --commit <path>`.
 
-## Common Commands / User Intents
+For setup credentials flows ("配置凭证", "setup wechat-article account"), read
+`core/wizard/credential_setup.md`. Direct the user to run `mmp setup <provider>`
+locally — never ask them to paste a secret into chat unless they insist.
 
-- “把这组图文同步发到小红书和微信图文” → `image-post`, targets `xiaohongshu`, `wechat-image`, default `draft`.
-- “这篇长文同时发公众号、X 长文章、Substack” → `longform`, targets `wechat-article`, `x-article`, `substack`, default `draft`.
-- “直接发布” → verify exact content and targets, then ask one final confirmation before public publish.
-- “以后加视频号/抖音/B站” → update `platform-map.md` and add a `video-post` adapter; do not mix video assumptions into image/longform flows.
+## Public-publish Gate
 
-## Bundled Resources
+If a wizard run would result in `mode: publish` for any target, ALWAYS:
 
-- `references/manifest-schema.md` — canonical YAML fields and examples.
-- `references/platform-map.md` — platform capability matrix and preferred candidate skills.
-- `references/publishing-policy.md` — confirmation, privacy, and external-action rules.
-- `references/candidate-skills.md` — researched ClawHub/local skills and integration notes.
-- `references/workflows.md` — MVP implementation phases and operational checklists.
-- `references/image-post-mvp.md` — Phase 2 Xiaohongshu + WeChat image-post adapter plan.
-- `references/phase2-audit.md` — audit notes for installed `multi-post` and `social-media-publish`.
-- `references/wechat-image-calibration.md` — WeChat browser fallback calibration status and unblock plan.
-- `references/wechat-api-provider.md` — WeChat Official Account API draft provider design.
-- `scripts/adapt_content.py` — scaffold generic platform-specific pack files from a manifest.
-- `scripts/prepare_image_post.py` — validate image-post manifests and generate Xiaohongshu/WeChat image payloads + preview without publishing; also writes `packs/wechat-article-api-bridge/payload.json` for WeChat API dry-run compatibility.
-- `scripts/execute_image_post.py` — draft-only executor for prepared image-post runs; currently creates Xiaohongshu local drafts and WeChat browser-flow guides.
-- `scripts/wechat_api_draft.py` — draft-only WeChat Official Account API helper for access-token, cover upload, and draft creation.
-- `scripts/prepare_longform.py` — validate longform manifests and generate `wechat-article`, `x-article`, and `substack` payloads + preview without publishing.
-- `scripts/test_local.py` / `Makefile` — local smoke test for compile, image-post prepare/execute guide, Xiaohongshu local draft, WeChat API dry-run, and longform prepare.
-- `scripts/publish_manifest.py` — validate manifest and create a run directory/log skeleton; dispatch remains manual/skill-driven until connectors are verified.
-- `examples/image-post.yaml` and `examples/longform.yaml` — starter manifests.
+1. Show the rendered manifest first.
+2. Ask "Confirm public publish? (yes/no)".
+3. Proceed only on exact match `yes`. Anything else → downgrade to `draft`.
+
+This rule overrides any earlier user permission. Each public publish is a fresh
+ask in the active conversation.
+
+## v0.2 supported providers
+
+| Provider | Media | Mode support | Notes |
+|---|---|---|---|
+| `wechat-article` | longform | dry-run, draft | Real WeChat OA API; needs AppID/AppSecret |
+| `xiaohongshu` | image-post (video planned) | dry-run, draft (local) | Uses xiaohongshu skill's `draft.sh` |
+| `wechat-image` | image-post | dry-run, draft (browser-flow guide) | UI calibration TODO; guide-only path |
+| `x-article` | longform | dry-run, draft (payload + TODO) | No connector yet; manual paste step |
+| `substack` | longform | dry-run, draft (payload + TODO) | No connector yet; manual paste step |
+
+## Safety rules
+
+1. Never publish publicly without explicit confirmation
+2. Never bypass login, CAPTCHA, platform review, or anti-abuse safeguards
+3. Treat all credentials as secrets; never print them
+4. If browser automation reaches an ambiguous screen, stop and ask
+5. Read `docs/safety-policy.md` (was `references/publishing-policy.md`)
+
+## Architecture
+
+See `docs/superpowers/specs/2026-05-05-multi-media-publisher-redesign-design.md`
+for the full architecture spec. In short:
+
+- **Shell**: this SKILL.md + `.claude-plugin/plugin.json`
+- **Core**: `core/` — host-agnostic Python (manifest, provider registry, vault, run lifecycle)
+- **Providers**: `providers/<name>/` (bundled) + `~/.config/mmp/providers/<name>/` (user)
+
+## Quickstart
+
+```bash
+# 1. Validate
+python3 scripts/mmp.py validate examples/longform.yaml
+
+# 2. Configure WeChat credentials
+python3 scripts/mmp.py setup wechat-article
+
+# 3. Dry-run
+python3 scripts/mmp.py publish examples/longform.yaml --mode-override dry-run
+
+# 4. Inspect runs
+python3 scripts/mmp.py list runs
+```
+
+## Bundled resources
+
+- `core/` — manifest, provider, credentials, run, rules, host, errors
+- `providers/wechat_article/` — first-party WeChat OA article provider
+- `examples/longform.yaml` — sample manifest
+- `docs/HANDOFF.md` — historical state notes
+- `docs/superpowers/specs/2026-05-05-multi-media-publisher-redesign-design.md` — v0.2 design spec
+- `docs/superpowers/plans/` — v0.2 implementation plans (historical)

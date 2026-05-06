@@ -1,16 +1,14 @@
+schema_version: "0.2"
 type: image-post
-title: "AI 创业的三个误区"
+title: "v0.2 图文示例"
 body: ./caption.md
-mode: draft
+mode: dry-run
 language: zh-CN
 targets:
   - xiaohongshu
-  - wechat-image
 assets:
   images:
-    - ./01.png
-    - ./02.png
+    - ./img-01.png
+    - ./img-02.png
 tags:
-  - AI
-  - 创业
-cta: "欢迎留言聊聊你的看法。"
+  - example

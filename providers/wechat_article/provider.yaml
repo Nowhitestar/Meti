@@ -1,0 +1,19 @@
+name: wechat-article
+display_name: 微信公众号文章
+media_types:
+  - longform
+capabilities:
+  draft: true
+  publish: false
+  schedule: false
+required_credentials:
+  - key: WECHAT_APP_ID
+    description: "WeChat Official Account AppID"
+    secret: false
+    setup_hint: "From mp.weixin.qq.com → 设置与开发 → 基本配置"
+  - key: WECHAT_APP_SECRET
+    description: "WeChat Official Account AppSecret"
+    secret: true
+    setup_hint: "Same page as AppID; reset if forgotten"
+entry: provider:WeChatArticleProvider
+schema_version: 1

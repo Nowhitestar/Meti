@@ -355,3 +355,159 @@ python3 scripts/execute_image_post.py <run-dir> \
 - 本地回归测试
 
 下一任开发者可以直接从“真实 provider 验证”开始，不需要重做架构设计。
+
+---
+
+## v0.2 Redesign — In Progress
+
+Active spec: `docs/superpowers/specs/2026-05-05-multi-media-publisher-redesign-design.md`
+Plans: `docs/superpowers/plans/2026-05-05-plan-{1,2,3,4}-*.md`
+
+### Plan 1 status (this commit range)
+
+- Core architecture: `core/` modules in place (manifest, provider, credentials, run, rules, host, errors)
+- First provider migrated: `wechat_article` (validate + prepare + execute draft + health_check)
+- CLI: `scripts/mmp.py` with validate/publish/setup/list/resume/doctor
+- Tests: unit + integration; `make test` covers lint + typecheck + unit + smoke
+- Old scripts: `wechat_api_draft.py` deprecated (shim only)
+
+### Open items after Plan 1
+
+- Wizard subcommand: stub only; implemented in Plan 2
+- Remaining providers (xiaohongshu / wechat_image / x_article / substack): Plan 3
+- Plugin marketplace prep + CI: Plan 4
+- Real WeChat account verification: see `docs/manual-verification.md` (Plan 4)
+- v0.3 backlog: vault concurrent-write locking, atomic vault write, lost-key UX (deferred from Task 6 review)
+
+### Plan 2 status (this commit range)
+
+- `core/wizard/` package: source_extraction / target_selection / manifest_assembly / credential_setup prompts
+- `core/wizard/loader.py`: render Markdown fragments with {{var}} substitution
+- `core/wizard/context.py`: dump providers/accounts/settings as JSON for Claude
+- `core/wizard/commit.py`: validate + persist a manifest into a new run dir
+- `core/settings.py`: read/write `~/.config/mmp/settings.toml`
+- CLI: `mmp wizard --dump-context [--type ...]`, `mmp wizard --commit <path>`
+- SKILL.md: wizard triggers + 3-stage flow + public-publish gate
+
+### Open items after Plan 2
+
+- Remaining 4 providers (xiaohongshu / wechat_image / x_article / substack): Plan 3
+- Plugin marketplace prep + CI: Plan 4
+
+### Plan 3 status (this commit range)
+
+- All 4 remaining providers migrated:
+  - `xiaohongshu` (image-post + video-post): local draft via `xiaohongshu/scripts/draft.sh`
+  - `wechat-image` (image-post): browser-flow guide (mp.weixin.qq.com is policy-blocked)
+  - `x-article` (longform): payload-only stub; connector TODO
+  - `substack` (longform): payload-only stub; connector TODO
+- Old scripts (`prepare_image_post.py`, `prepare_longform.py`, `execute_image_post.py`,
+  `adapt_content.py`, `publish_manifest.py`) deprecated as thin shims; remove in v0.3
+- Smoke test covers wechat-article + image-post-multi + longform-multi
+- 5 providers visible in `mmp list providers`
+
+### Open items after Plan 3
+
+- Plugin marketplace prep + dual-host distribution: Plan 4
+- CI matrix (GitHub Actions): Plan 4
+- Real WeChat / X / Substack account verification: see `docs/manual-verification.md` (Plan 4)
+
+### Plan 4 status (this commit range)
+
+- `.claude-plugin/plugin.json` published — Claude Code plugin marketplace ready
+- `SKILL.md` v0.2.0 final — dual-host description, no plan-N markers
+- `README.md` rewritten as install + quickstart
+- New docs: `architecture.md`, `provider-contract.md`, `credentials.md`,
+  `safety-policy.md`, `manual-verification.md`
+- `references/` archived; `legacy-research.md` retained for context
+- `.github/workflows/ci.yml` — matrix CI (ubuntu+macos × py3.10/3.11/3.12)
+- `CHANGELOG.md` — v0.2.0 release notes
+- `pyproject.toml` — version 0.2.0
+
+### v0.2 → v0.3 hand-off
+
+The next milestone:
+
+1. **Real-account verification** — work the `manual-verification.md` checklist
+   for wechat-article, xiaohongshu, wechat-image
+2. **x-article / substack connectors** — replace TODO-connector.md with real
+   draft-creation logic (likely browser automation)
+3. **Remove deprecation shims** — drop `scripts/prepare_*`, `scripts/execute_*`,
+   `scripts/adapt_content.py`, `scripts/publish_manifest.py`, `scripts/wechat_api_draft.py`
+4. **Keychain credential backend** — implement `KeychainBackend`; expose via
+   `settings.toml.credentials.backend`
+5. **Resume command** — implement `mmp resume <run-dir>` checkpoint replay
+6. **Video-post providers** — `xiaohongshu_video`, `wechat_channel`, `douyin`,
+   `bilibili`, `youtube_shorts`
+7. **User-folder provider auto-trust + signing** — In v0.2 the
+   `ProviderRegistry.discover()` defaults to `trust_user=False`, so providers
+   in `~/.config/mmp/providers/` are detected (visible via `mmp list providers`
+   would show them only if discovery is invoked with trust_user=True manually
+   in Python) but not loaded by the CLI. v0.3 will:
+     - Read `settings.toml.providers.trusted_user_providers`
+     - Prompt the user on first-encounter of an untrusted user provider
+     - Add chosen provider to the trusted list
+     - Add optional signature verification (independent of trust prompt)
+8. **Vault hardening** (carried from earlier reviews):
+     - Concurrent `set()` write race protection (file locking)
+     - Atomic `write_all` (write tmp + rename)
+     - Lost-key UX (don't auto-regenerate when vault exists)
+
+### v0.2 ship checklist
+
+- [x] All 4 plans' tasks completed and committed (76 commits)
+- [ ] CI green on all matrix jobs (verifies on push)
+- [x] `mmp doctor` clean on a fresh machine after `pip install -e .`
+- [x] Real-account verification (see `docs/manual-verification.md`) green
+  - wechat-article: real draft created on mp.weixin.qq.com (media_id `WbX2nHWvJ4Nnr7sz...`); 4 real bugs found+fixed (asset path resolution, placeholder PNG, IP whitelist, etc.)
+  - xiaohongshu: real local draft via skill's draft.sh; 3 real bugs found+fixed (path discovery, invocation contract, empty required_credentials)
+  - wechat-image / x-article / substack: deferred to v0.2.x or v0.3 (not blockers per spec — wechat-image is browser-flow guide, x/substack are stubs)
+- [ ] Tag `v0.2.0`
+- [ ] Submit to Claude Code plugin marketplace
+
+### Discovered during real-account verification (already fixed in branch)
+
+7 real integration bugs that v0.2's mock-based tests didn't catch:
+
+1. **Manifest asset paths**: `core/manifest.py` did not resolve `./` prefixes
+   for `assets.cover/images/video`. providers got bare relative paths and
+   couldn't find files. Fixed via `_resolve_asset_path()` helper that
+   mirrors `_resolve_inline_or_path` semantics. (`f72c522`)
+
+2. **examples/cover.png**: 1×1 placeholder PNG (81 bytes) — WeChat
+   `material/add_material?type=thumb` returns `errcode 40113 unsupported
+   file type`. Replaced with a real 900×500 PNG. (`f72c522`)
+
+3. **xiaohongshu path discovery**: searched
+   `~/.openclaw/skills/xiaohongshu/scripts/draft.sh` but real install on
+   user's machine was at `~/.openclaw/workspace/skills/...`. Added the
+   workspace path + `XHS_DRAFT_SH` env var override. (`aba9ddd`)
+
+4. **xiaohongshu draft.sh contract**: passed `--payload <file>
+   --cookie <file>` flags, but draft.sh actually takes a single positional
+   JSON string and never reads a cookie. Rewrote `_invoke_local_draft`. (`aba9ddd`)
+
+5. **xiaohongshu output parsing**: draft.sh emits human-readable
+   `"✓ 已创建本地草稿: <path>"` to stdout, not JSON. Added regex parse. (`aba9ddd`)
+
+6. **xiaohongshu required_credentials**: marked XHS_COOKIE_PATH required,
+   but local-draft path needs no credentials. Made the list empty. (`aba9ddd`)
+
+7. **`cmd_publish` empty required_keys**: when a provider declares zero
+   required credentials, `store.get(..., required_keys=[])` treated `[]`
+   as None and raised `MissingCredentialError(['*'])`. Fixed in
+   `cmd_publish` to skip vault lookup when `required` is empty. (`aba9ddd`)
+
+These bugs validate the v0.3 priority of getting real-account verification
+into a `mmp verify-<provider>` runbook so future provider migrations catch
+contract drift before users do.
+
+### Operational pain (v0.3 first task)
+
+Real-account verification of wechat-article from a home / split-routing
+network revealed that **WeChat API sees a different outbound IP than
+ipinfo.io** (`115.199.114.116` vs `103.129.180.55`). Each network change
+will require updating the IP whitelist; 50-IP ceiling will eventually
+cap out. **v0.3 should ship `WECHAT_API_PROXY` env var support + a
+Cloudflare Worker proxy template** so users with non-static IPs can route
+WeChat API through a single static-IP bastion.

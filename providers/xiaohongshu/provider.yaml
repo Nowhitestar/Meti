@@ -1,0 +1,16 @@
+name: xiaohongshu
+display_name: 小红书
+media_types:
+  - image-post
+  - video-post
+capabilities:
+  draft: true
+  publish: false
+  schedule: false
+required_credentials:
+  - key: XHS_COOKIE_PATH
+    description: "Path to xiaohongshu cookies file (JSON)"
+    secret: false
+    setup_hint: "Use the xiaohongshu skill's `xhs-login` flow to capture cookies; default path `~/.config/mmp/cookies/xhs.json`"
+entry: provider:XiaohongshuProvider
+schema_version: 1
