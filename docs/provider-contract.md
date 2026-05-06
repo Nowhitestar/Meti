@@ -113,12 +113,20 @@ MY_RULES = PlatformRules(
 
 ## Trust model for user-installed providers
 
-User providers under `~/.config/mmp/providers/` are not loaded automatically.
-On first discovery, `mmp` prompts:
+User providers under `~/.config/mmp/providers/` are not loaded automatically
+in v0.2. The `ProviderRegistry.discover()` defaults to `trust_user=False`,
+so user folders are detected but skipped.
 
-> Trust provider `my-platform` from `~/.config/mmp/providers/my_platform/`? (y/n)
+To load a user provider in v0.2, you must explicitly call
+`ProviderRegistry.discover(trust_user=True)` from Python — primarily intended
+for tests or power-user scripts. The CLI never enables trust automatically.
 
-A `y` adds the name to `settings.toml.providers.trusted_user_providers`.
+v0.3 will add:
+- A first-encounter trust prompt
+- `settings.toml.providers.trusted_user_providers` whitelist
+- Optional signature verification
+
+See `docs/safety-policy.md` for the full third-party provider policy.
 
 ## Testing
 
