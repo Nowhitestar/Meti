@@ -393,3 +393,21 @@ Plans: `docs/superpowers/plans/2026-05-05-plan-{1,2,3,4}-*.md`
 
 - Remaining 4 providers (xiaohongshu / wechat_image / x_article / substack): Plan 3
 - Plugin marketplace prep + CI: Plan 4
+
+### Plan 3 status (this commit range)
+
+- All 4 remaining providers migrated:
+  - `xiaohongshu` (image-post + video-post): local draft via `xiaohongshu/scripts/draft.sh`
+  - `wechat-image` (image-post): browser-flow guide (mp.weixin.qq.com is policy-blocked)
+  - `x-article` (longform): payload-only stub; connector TODO
+  - `substack` (longform): payload-only stub; connector TODO
+- Old scripts (`prepare_image_post.py`, `prepare_longform.py`, `execute_image_post.py`,
+  `adapt_content.py`, `publish_manifest.py`) deprecated as thin shims; remove in v0.3
+- Smoke test covers wechat-article + image-post-multi + longform-multi
+- 5 providers visible in `mmp list providers`
+
+### Open items after Plan 3
+
+- Plugin marketplace prep + dual-host distribution: Plan 4
+- CI matrix (GitHub Actions): Plan 4
+- Real WeChat / X / Substack account verification: see `docs/manual-verification.md` (Plan 4)
