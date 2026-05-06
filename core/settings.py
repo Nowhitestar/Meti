@@ -15,7 +15,7 @@ if sys.version_info >= (3, 11):
 else:  # pragma: no cover
     # tomli is only installed on py3.10 (see pyproject.toml conditional dep);
     # mypy on py3.11+ can't resolve the import and we don't want it to.
-    import tomli as tomllib  # type: ignore[import-not-found]
+    import tomli as tomllib  # type: ignore[import-not-found,unused-ignore]
 
 import tomli_w
 
