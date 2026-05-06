@@ -411,3 +411,53 @@ Plans: `docs/superpowers/plans/2026-05-05-plan-{1,2,3,4}-*.md`
 - Plugin marketplace prep + dual-host distribution: Plan 4
 - CI matrix (GitHub Actions): Plan 4
 - Real WeChat / X / Substack account verification: see `docs/manual-verification.md` (Plan 4)
+
+### Plan 4 status (this commit range)
+
+- `.claude-plugin/plugin.json` published — Claude Code plugin marketplace ready
+- `SKILL.md` v0.2.0 final — dual-host description, no plan-N markers
+- `README.md` rewritten as install + quickstart
+- New docs: `architecture.md`, `provider-contract.md`, `credentials.md`,
+  `safety-policy.md`, `manual-verification.md`
+- `references/` archived; `legacy-research.md` retained for context
+- `.github/workflows/ci.yml` — matrix CI (ubuntu+macos × py3.10/3.11/3.12)
+- `CHANGELOG.md` — v0.2.0 release notes
+- `pyproject.toml` — version 0.2.0
+
+### v0.2 → v0.3 hand-off
+
+The next milestone:
+
+1. **Real-account verification** — work the `manual-verification.md` checklist
+   for wechat-article, xiaohongshu, wechat-image
+2. **x-article / substack connectors** — replace TODO-connector.md with real
+   draft-creation logic (likely browser automation)
+3. **Remove deprecation shims** — drop `scripts/prepare_*`, `scripts/execute_*`,
+   `scripts/adapt_content.py`, `scripts/publish_manifest.py`, `scripts/wechat_api_draft.py`
+4. **Keychain credential backend** — implement `KeychainBackend`; expose via
+   `settings.toml.credentials.backend`
+5. **Resume command** — implement `mmp resume <run-dir>` checkpoint replay
+6. **Video-post providers** — `xiaohongshu_video`, `wechat_channel`, `douyin`,
+   `bilibili`, `youtube_shorts`
+7. **User-folder provider auto-trust + signing** — In v0.2 the
+   `ProviderRegistry.discover()` defaults to `trust_user=False`, so providers
+   in `~/.config/mmp/providers/` are detected (visible via `mmp list providers`
+   would show them only if discovery is invoked with trust_user=True manually
+   in Python) but not loaded by the CLI. v0.3 will:
+     - Read `settings.toml.providers.trusted_user_providers`
+     - Prompt the user on first-encounter of an untrusted user provider
+     - Add chosen provider to the trusted list
+     - Add optional signature verification (independent of trust prompt)
+8. **Vault hardening** (carried from earlier reviews):
+     - Concurrent `set()` write race protection (file locking)
+     - Atomic `write_all` (write tmp + rename)
+     - Lost-key UX (don't auto-regenerate when vault exists)
+
+### v0.2 ship checklist
+
+- [ ] All 4 plans' tasks completed and committed
+- [ ] CI green on all matrix jobs
+- [ ] `mmp doctor` clean on a fresh machine after `pip install -e .`
+- [ ] Real-account verification (see `docs/manual-verification.md`) green
+- [ ] Tag `v0.2.0`
+- [ ] Submit to Claude Code plugin marketplace
