@@ -115,13 +115,15 @@ def test_build_xhs_payload_reshapes_for_draft_sh():
     """Internal: payload reshape matches draft.sh's expected JSON shape."""
     from providers.xiaohongshu.provider import _build_xhs_payload
 
-    out = _build_xhs_payload({
-        "title": "T",
-        "caption": "C",
-        "images": ["/abs/a.png"],
-        "tags": ["x"],
-        "extra_unused": "ignored",
-    })
+    out = _build_xhs_payload(
+        {
+            "title": "T",
+            "caption": "C",
+            "images": ["/abs/a.png"],
+            "tags": ["x"],
+            "extra_unused": "ignored",
+        }
+    )
     assert out == {
         "title": "T",
         "content": "C",  # caption -> content

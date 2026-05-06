@@ -101,9 +101,7 @@ def _invoke_local_draft(payload: dict[str, Any]) -> dict[str, Any]:
             draft_path = m.group(1).strip()
             break
     if draft_path is None:
-        raise RuntimeError(
-            f"draft.sh did not report a draft path. stdout was:\n{result.stdout}"
-        )
+        raise RuntimeError(f"draft.sh did not report a draft path. stdout was:\n{result.stdout}")
 
     # draft_id = the file's basename without extension
     draft_id = Path(draft_path).stem

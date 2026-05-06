@@ -18,6 +18,7 @@ def main() -> int:
 
     # Import scripts/mmp.py via importlib (it's not a regular package member).
     import importlib.util
+
     mmp_path = repo_root / "scripts" / "mmp.py"
     spec = importlib.util.spec_from_file_location("_mmp_cli", mmp_path)
     if not spec or not spec.loader:

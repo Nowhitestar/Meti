@@ -77,9 +77,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
         for t in m.targets:
             provider = reg.resolve(t.name)
             # Capability gate: target.mode must be supported by provider
-            cap_key = "publish" if t.mode == "publish" else (
-                "draft" if t.mode == "draft" else None
-            )
+            cap_key = "publish" if t.mode == "publish" else ("draft" if t.mode == "draft" else None)
             if cap_key and not provider.capabilities.get(cap_key, False):
                 all_violations.append(
                     Violation(
@@ -147,8 +145,8 @@ def cmd_publish(args: argparse.Namespace) -> int:
             run.log("TARGET_START", target=t.name, account=t.account)
             try:
                 provider = reg.resolve(t.name)
-                cap_key = "publish" if t.mode == "publish" else (
-                    "draft" if t.mode == "draft" else None
+                cap_key = (
+                    "publish" if t.mode == "publish" else ("draft" if t.mode == "draft" else None)
                 )
                 if cap_key and not provider.capabilities.get(cap_key, False):
                     run.add_target_result(
