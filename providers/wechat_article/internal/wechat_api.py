@@ -21,7 +21,31 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
-API_BASE = "https://api.weixin.qq.com/cgi-bin"
+_DEFAULT_API_BASE = "https://api.weixin.qq.com/cgi-bin"
+
+
+def _api_base() -> str:
+    """Resolve the WeChat API base URL.
+
+    Reads ``WECHAT_API_PROXY`` env var per call (not at import time) so tests
+    and dynamic config work. When set, all WeChat API calls go through the
+    proxy instead of ``api.weixin.qq.com``. The proxy must preserve path
+    ``/cgi-bin/...`` and forward to WeChat verbatim.
+
+    See ``docs/wechat-api-proxy.md`` for a Cloudflare Worker template that
+    gives you a single static-IP bastion for users on dynamic/split-routing
+    networks (the common case for home / cafe / office hopping).
+    """
+    proxy = os.environ.get("WECHAT_API_PROXY", "").strip()
+    if proxy:
+        return proxy.rstrip("/") + "/cgi-bin"
+    return _DEFAULT_API_BASE
+
+
+# Back-compat: existing callers reference API_BASE as a module-level constant.
+# Keep it as a property-like callable for mypy + readability. Callers should
+# prefer _api_base() directly going forward.
+API_BASE = _DEFAULT_API_BASE
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +150,7 @@ def get_access_token(app_id: str, app_secret: str) -> str:
         return env
     if not app_id or not app_secret:
         raise ValueError("app_id and app_secret are required unless WECHAT_ACCESS_TOKEN is set")
-    url = f"{API_BASE}/token?" + urllib.parse.urlencode(
+    url = f"{_api_base()}/token?" + urllib.parse.urlencode(
         {"grant_type": "client_credential", "appid": app_id, "secret": app_secret}
     )
     data = _get_json(url)
@@ -139,7 +163,7 @@ def upload_thumb(token: str, image_path: pathlib.Path) -> str:
     """Upload a cover (thumb) image and return the resulting media_id."""
     if not image_path.exists():
         raise FileNotFoundError(f"cover image not found: {image_path}")
-    url = f"{API_BASE}/material/add_material?" + urllib.parse.urlencode(
+    url = f"{_api_base()}/material/add_material?" + urllib.parse.urlencode(
         {"access_token": token, "type": "thumb"}
     )
     data = _multipart_upload(url, "media", image_path)
@@ -151,7 +175,7 @@ def upload_thumb(token: str, image_path: pathlib.Path) -> str:
 def add_draft(token: str, articles: list[dict[str, Any]]) -> str:
     """Create a draft from a list of article dicts; returns the draft media_id."""
     payload = {"articles": articles}
-    url = f"{API_BASE}/draft/add?" + urllib.parse.urlencode({"access_token": token})
+    url = f"{_api_base()}/draft/add?" + urllib.parse.urlencode({"access_token": token})
     data = _post_json(url, payload)
     if "media_id" not in data:
         raise RuntimeError(f"failed to add draft: {data}")
@@ -194,7 +218,7 @@ def draft_from_payload(
 
     if not thumb_media_id and cover:
         if dry_run:
-            upload_url = f"{API_BASE}/material/add_material?" + urllib.parse.urlencode(
+            upload_url = f"{_api_base()}/material/add_material?" + urllib.parse.urlencode(
                 {"access_token": token, "type": "thumb"}
             )
             upload_result = {
@@ -213,7 +237,7 @@ def draft_from_payload(
     article = _article_from_payload(payload, thumb_media_id)
 
     if dry_run:
-        draft_url = f"{API_BASE}/draft/add?" + urllib.parse.urlencode({"access_token": token})
+        draft_url = f"{_api_base()}/draft/add?" + urllib.parse.urlencode({"access_token": token})
         draft_result: dict[str, Any] = {
             "ok": True,
             "dry_run": True,
