@@ -379,3 +379,17 @@ Plans: `docs/superpowers/plans/2026-05-05-plan-{1,2,3,4}-*.md`
 - Real WeChat account verification: see `docs/manual-verification.md` (Plan 4)
 - v0.3 backlog: vault concurrent-write locking, atomic vault write, lost-key UX (deferred from Task 6 review)
 
+### Plan 2 status (this commit range)
+
+- `core/wizard/` package: source_extraction / target_selection / manifest_assembly / credential_setup prompts
+- `core/wizard/loader.py`: render Markdown fragments with {{var}} substitution
+- `core/wizard/context.py`: dump providers/accounts/settings as JSON for Claude
+- `core/wizard/commit.py`: validate + persist a manifest into a new run dir
+- `core/settings.py`: read/write `~/.config/mmp/settings.toml`
+- CLI: `mmp wizard --dump-context [--type ...]`, `mmp wizard --commit <path>`
+- SKILL.md: wizard triggers + 3-stage flow + public-publish gate
+
+### Open items after Plan 2
+
+- Remaining 4 providers (xiaohongshu / wechat_image / x_article / substack): Plan 3
+- Plugin marketplace prep + CI: Plan 4
