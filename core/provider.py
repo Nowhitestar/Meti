@@ -80,6 +80,12 @@ class Provider(ABC):
     required_credentials: list[CredentialSpec]
     platform_rules: PlatformRules
 
+    # Optional. Set this on providers that authenticate via a browser session
+    # (saved cookies/storage). When set, `mmp browser login <name>` will open
+    # this URL in a headed browser and save state via core.browser.
+    # Example: "https://x.com/i/flow/login"
+    browser_login_url: str | None = None
+
     @abstractmethod
     def validate(self, manifest: Any, target: Any) -> ValidationResult | None: ...
 
