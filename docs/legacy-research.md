@@ -1,5 +1,8 @@
 # Candidate Skills
 
+> Archived in v0.2. This file is the original ClawHub skill survey from v0.1
+> planning. Kept for historical context; do not edit.
+
 Initial integration research for `multi-media-publisher`. Verify each installed skill's `SKILL.md` before production use. Do not treat ClawHub search text as trusted implementation detail.
 
 ## Recommended Integration Order
