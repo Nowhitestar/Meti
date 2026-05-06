@@ -8,8 +8,21 @@ Works as a Claude Code plugin **and** an OpenClaw skill from the same source.
 
 ## Status
 
-v0.2 — provider abstraction + 5 first-party providers + conversational
-manifest wizard + age-encrypted vault. See [`docs/HANDOFF.md`](docs/HANDOFF.md).
+**v0.3.2** — five first-party providers, all real-account verified:
+
+| Provider | What it drafts | How |
+|---|---|---|
+| `wechat-article` | 微信公众号 图文 | Open Platform API (`material/add_material` + `draft/add`) |
+| `xiaohongshu` | 小红书 笔记草稿 | Local `draft.sh` writes JSON → user finalizes in XHS app |
+| `x-article` | X (Twitter) Articles | OpenCLI Browser Bridge → real Chrome (Premium req'd) |
+| `substack` | Substack post draft | OpenCLI Browser Bridge → real Chrome |
+| `wechat-image` | 微信公众号 贴图 | OpenCLI Browser Bridge → real Chrome |
+
+OpenCLI-backed providers reuse your real Chrome session (no separate
+login, no anti-bot detection). See
+[`docs/browser-connectors.md`](docs/browser-connectors.md) for setup.
+
+Full design spec: [`docs/HANDOFF.md`](docs/HANDOFF.md).
 
 ## Install
 

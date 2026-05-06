@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from core import __version__
 from core.manifest import load_manifest, write_lock
 from core.run import Run
 
@@ -14,7 +15,7 @@ def commit_manifest(src_path: str | Path) -> Path:
 
     run = Run.create(
         title=manifest.title,
-        mmp_version="0.2.0",
+        mmp_version=__version__,
         host="wizard",
         mode=manifest.mode,
     )

@@ -33,9 +33,9 @@ Trade-offs:
 |---|---|---|
 | `wechat-article` | API + AppID/Secret | No (use API) |
 | `xiaohongshu` | Local skill via `draft.sh` | No |
-| `wechat-image` | Manual browser-flow guide | No (manual) |
-| `x-article` | Browser session via OpenCLI | **Yes** |
-| `substack` | Browser session via OpenCLI | **Yes** (v0.3.2+) |
+| `x-article` | Browser session via OpenCLI | **Yes** (v0.3.1+) |
+| `substack` | Browser session via OpenCLI | **Yes** (v0.3.1+) |
+| `wechat-image` (贴图) | Browser session via OpenCLI | **Yes** (v0.3.2+) |
 
 ## Setup
 
@@ -82,7 +82,8 @@ your real Chrome**. If you're already logged in, it's a no-op.
 
 ```bash
 mmp browser login x-article    # opens https://x.com/i/flow/login
-mmp browser login substack     # opens https://substack.com/sign-in (v0.3.2+)
+mmp browser login substack     # opens https://substack.com/sign-in
+mmp browser login wechat-image # opens https://mp.weixin.qq.com/  (v0.3.2+)
 ```
 
 ### 5. Create a draft
@@ -91,13 +92,18 @@ mmp browser login substack     # opens https://substack.com/sign-in (v0.3.2+)
 mmp publish examples/longform.yaml --mode-override draft
 ```
 
-If the manifest includes a browser-flow provider (currently x-article;
-substack landing in v0.3.2), mmp:
+If the manifest includes a browser-flow provider (x-article, substack,
+or wechat-image), mmp:
 
 1. Calls `opencli browser open <provider compose URL>` in your Chrome
-2. Drives the editor (type title, body, etc.)
-3. X / Substack auto-saves while we type
-4. Captures the draft URL / ID, returns as `external_id`
+2. For wechat-image: injects local image bytes via the
+   `DataTransfer` trick — MP's webuploader picks up the synthetic
+   `change` event and POSTs to `/cgi-bin/filetransfer` normally
+3. Drives the editor (type title, body, etc.)
+4. For X/Substack: editor auto-saves while we type. For wechat-image:
+   we click MP's own "保存为草稿" button so MP's internal save logic
+   (with its `fingerprint`-signing wrappers) runs end-to-end
+5. Captures the draft URL / ID, returns as `external_id`
 
 If the bridge isn't connected, the run gracefully falls back to
 "stub" mode: writes a `TODO-connector.md` with manual instructions
@@ -105,14 +111,15 @@ in the run dir. The other targets (wechat-article, etc.) still run.
 
 ## Session expiry
 
-Browser sessions don't last forever. When X or Substack invalidates
-your cookies (typically 1–4 weeks of inactivity), `mmp publish` fails
-on the browser flow with a "redirected to login" error. Just go to
-the provider's site in your Chrome, log in normally, then retry:
+Browser sessions don't last forever. When X / Substack / WeChat MP
+invalidates your cookies (typically 1–4 weeks of inactivity), `mmp
+publish` fails on the browser flow with a "redirected to login" error.
+Just go to the provider's site in your Chrome, log in normally, then
+retry:
 
 ```bash
-# Just open it; X / Substack remembers the rest.
-mmp browser login x-article
+# Just open it; the site remembers the rest.
+mmp browser login x-article     # or substack / wechat-image
 mmp resume <run-dir>
 ```
 
@@ -121,12 +128,13 @@ mmp resume <run-dir>
 Browser-flow providers are local-only by design. CI doesn't have a
 real Chrome with your logins, so these providers fall back to stub
 mode automatically — multi-target manifests still progress, with
-x-article / substack becoming manual steps in the run dir.
+x-article / substack / wechat-image becoming manual steps in the
+run dir.
 
 ## Selector drift / when the connector breaks
 
-X and Substack ship UI changes regularly. When they break selectors,
-the symptom is usually:
+X, Substack and WeChat MP ship UI changes regularly. When they break
+selectors, the symptom is usually:
 
 ```
 RuntimeError: x compose/articles: 'Write new' button not found.
@@ -155,10 +163,51 @@ also try `Add a title` for English UI. If your locale is different
 `providers/x_article/internal/browser_flow.py` to add your
 placeholder. PRs welcome.
 
+The `wechat-image` connector targets MP's Chinese-only UI (button
+text `保存为草稿`, title placeholder `请在这里输入标题（选填）`).
+There is no English Creator Studio UI — overseas accounts log into
+the same Chinese console.
+
+## Notes specific to `wechat-image` (贴图)
+
+The 贴图 connector is the trickiest of the three because:
+
+1. **No cover-only API**: WeChat Open Platform's `material/add_material`
+   + `draft/add` covers articles (图文) but NOT 贴图 (`type=77`).
+   See `docs/wechat-image-tietu-research.md` for the full
+   reverse-engineering notes that informed the implementation.
+2. **Local-file upload**: unlike X / Substack drafts (text-only), 贴图
+   requires real images. We pass them through the page via base64 in
+   `eval` and reconstruct as a `Blob` → `File` → `DataTransfer.items.add`
+   → `input.files` setter → `change` event. MP's webuploader picks it
+   up the same as a real drag-drop.
+3. **`fingerprint` form field**: MP's save endpoint expects a 32-char
+   MD5 in the body that's generated inside MP's own seajs modules.
+   We sidestep this by clicking MP's own "保存为草稿" button after
+   prepping the DOM — MP's internal save logic then runs end-to-end
+   and signs the request itself.
+4. **URL pattern is non-obvious**: `?action=add&type=77` returns 404.
+   Creating a fresh draft uses
+   `?t=media/appmsg_edit_v2&action=edit&isNew=1&type=10&createType=8`.
+   `type=77` only filters the draft-list view.
+
+If MP changes UI:
+
+- Title textarea selector lives in `TITLE_SELECTOR`
+- Save button is matched by Chinese text `保存为草稿`
+- File input picker logic is in `_JS_INJECT_IMAGE_TPL` (currently
+  skips `tpl_dropdown_menu_item` ancestors to avoid the leftover
+  dropdown's hidden file input)
+
 ## Security
 
-- Your X / Substack cookies live in **your** Chrome, not in mmp.
+- Your X / Substack / WeChat MP cookies live in **your** Chrome, not
+  in mmp.
 - mmp doesn't read cookie databases or copy login state.
+- For `wechat-image`, image bytes are passed to the page via base64 in
+  the `eval` channel; they only live in the page memory of the editor
+  tab and the upload XHR to `mp.weixin.qq.com`. mmp never persists
+  them outside the run-dir's pack folder.
 - `result.json` and `publish-log.md` only record draft URLs and IDs
   — no session tokens.
 - The OpenCLI extension only acts when you (or mmp on your behalf)
@@ -167,10 +216,14 @@ placeholder. PRs welcome.
 
 ## Roadmap
 
-- **v0.3.1**: x-article connector (this)
-- **v0.3.2**: substack connector (PR-B)
+- ✅ **v0.3.1**: x-article + substack connectors
+- ✅ **v0.3.2**: wechat-image (贴图) connector — adds local-image
+  injection via `DataTransfer` and "click MP's own save" pattern
+  (avoids reverse-engineering MP's `fingerprint` MD5)
+- **v0.4**: wechat-channel (视频号) connector
 - **v0.4**: per-provider session-expiry detection (auto-prompt re-login)
-- **v0.4**: cover image upload across browser-flow providers
+- **v0.4**: cover image upload for x-article + substack (currently
+  text-only)
 - **v0.4**: contribute reusable adapters back to OpenCLI upstream
   (e.g. `opencli substack draft-create`)
 

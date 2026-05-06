@@ -1,6 +1,6 @@
 [project]
 name = "multi-media-publisher"
-version = "0.3.0"
+version = "0.3.2"
 description = "Cross-platform content publishing orchestration."
 requires-python = ">=3.10"
 dependencies = [

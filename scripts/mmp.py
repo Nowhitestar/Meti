@@ -130,6 +130,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_publish(args: argparse.Namespace) -> int:
+    from core import __version__
     from core.credentials import CredentialStore
     from core.errors import MMPError
     from core.manifest import load_manifest, write_lock
@@ -147,7 +148,7 @@ def cmd_publish(args: argparse.Namespace) -> int:
         reg.discover()
         store = CredentialStore()
 
-        run = Run.create(title=m.title, mmp_version="0.2.0", host="cli", mode=m.mode)
+        run = Run.create(title=m.title, mmp_version=__version__, host="cli", mode=m.mode)
         # Write a self-contained manifest: inline the body so the run dir
         # doesn't depend on the source dir for resume / forensics.
         import yaml as _yaml
