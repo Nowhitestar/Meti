@@ -1,6 +1,6 @@
 ---
 name: Multi-media Publisher
-description: This skill should be used when the user asks to "多媒体发布", "多平台发布", "同步发布小红书和微信图文", "发微信图文和小红书", "发布长文章到公众号/X/Substack", "cross-post", "publish everywhere", or wants one content package adapted and published/drafted across Xiaohongshu, WeChat image posts, WeChat Official Account articles, X Articles/Twitter, Substack, or future video platforms.
+description: This skill should be used when the user asks to "多媒体发布", "多平台发布", "同步发布小红书和微信图文", "发微信图文和小红书", "发布长文章到公众号/X/Substack", "cross-post", "publish everywhere", or wants one content package adapted and published/drafted across Xiaohongshu, WeChat image posts, WeChat Official Account articles, X Articles/Twitter, Substack, or future video platforms; or "新发布", "帮我发一组到", "wizard", "guide me to publish".
 version: 0.2.0
 ---
 
@@ -38,6 +38,39 @@ Subcommands:
 
 Every run defaults to `mode: draft`. Public publishing requires explicit
 top-level `mode: publish` AND a second confirmation in conversation.
+
+## Wizard Mode
+
+When the user says "新发布", "帮我发一组到 X / Y", "publish to ...", "cross-post",
+or pastes content with publishing intent, run the **3-stage wizard** instead of
+asking them to write a manifest:
+
+1. **Stage 1 — Source Extraction**: read `core/wizard/source_extraction.md` and
+   follow the instructions there. Extract `type`, `title`, `body`, `cover`,
+   `images`, `tags`, `cta` into your conversation memory. Don't write files yet.
+
+2. **Stage 2 — Target Selection**: read `core/wizard/target_selection.md`. Run
+   `python3 scripts/mmp.py wizard --dump-context --type <T>` to fetch available
+   providers + credential status + accounts. Ask which targets, modes, accounts.
+
+3. **Stage 3 — Manifest Assembly**: read `core/wizard/manifest_assembly.md`.
+   Render YAML, write to a temp file, validate via `python3 scripts/mmp.py validate`,
+   show the user, get approval. On approve, run `python3 scripts/mmp.py wizard --commit <path>`.
+
+For setup credentials flows ("配置凭证", "setup wechat-article account"), read
+`core/wizard/credential_setup.md`. Direct the user to run `mmp setup <provider>`
+locally — never ask them to paste a secret into chat unless they insist.
+
+## Public-publish Gate
+
+If a wizard run would result in `mode: publish` for any target, ALWAYS:
+
+1. Show the rendered manifest first.
+2. Ask "Confirm public publish? (yes/no)".
+3. Proceed only on exact match `yes`. Anything else → downgrade to `draft`.
+
+This rule overrides any earlier user permission. Each public publish is a fresh
+ask in the active conversation.
 
 ## v0.2 supported providers
 
