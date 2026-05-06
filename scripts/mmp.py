@@ -45,6 +45,20 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("doctor", help="Self-check: vault, providers, health")
 
+    sub_browser = sub.add_parser("browser", help="Manage browser sessions for providers")
+    sub_browser.add_argument(
+        "action",
+        choices=["login", "logout", "status"],
+        help="login: capture session in headed browser; "
+        "logout: delete saved state; status: list saved states",
+    )
+    sub_browser.add_argument(
+        "provider",
+        nargs="?",
+        default=None,
+        help="Provider name (required for login/logout; optional for status)",
+    )
+
     sub_wizard = sub.add_parser("wizard", help="Conversational manifest wizard")
     sub_wizard.add_argument("--type", choices=["image-post", "longform", "video-post"])
     sub_wizard.add_argument("--targets", default=None, help="Comma-separated target names")
@@ -453,6 +467,68 @@ def cmd_wizard(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_browser(args: argparse.Namespace) -> int:
+    """Manage saved browser sessions for browser-flow providers (x-article, substack)."""
+    from core import browser as br
+    from core.errors import MMPError
+    from core.provider import ProviderRegistry
+
+    action = args.action
+    if action == "status":
+        # List all saved states; no provider arg required.
+        from core import host as h
+
+        state_dir = h.user_data_dir() / "browser-state"
+        if not state_dir.exists():
+            print("(no saved browser states)")
+            return 0
+        for f in sorted(state_dir.glob("*.json")):
+            mtime = f.stat().st_mtime
+            from datetime import datetime, timezone
+
+            ts = datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
+            print(f"  {f.stem:20s}  saved {ts} UTC  ({f})")
+        return 0
+
+    if not args.provider:
+        print(f"ERROR  `mmp browser {action}` requires a provider name", file=sys.stderr)
+        return 2
+
+    if action == "logout":
+        if br.delete_state(args.provider):
+            print(f"OK  removed browser state for {args.provider}")
+        else:
+            print(f"(no saved state for {args.provider})")
+        return 0
+
+    if action == "login":
+        # Resolve provider, find login URL, run interactive flow.
+        reg = ProviderRegistry()
+        reg.discover()
+        try:
+            provider = reg.resolve(args.provider)
+        except MMPError as e:
+            print(f"ERROR  {e}", file=sys.stderr)
+            return 2
+        login_url = getattr(provider, "browser_login_url", None)
+        if not login_url:
+            print(
+                f"ERROR  provider {args.provider!r} has no browser_login_url; "
+                f"this provider doesn't use browser sessions.",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            br.login_interactive(args.provider, login_url)
+        except MMPError as e:
+            print(f"ERROR  {e}", file=sys.stderr)
+            return 2
+        return 0
+
+    print(f"ERROR  unknown browser action: {action}", file=sys.stderr)
+    return 2
+
+
 _DISPATCH = {
     "validate": cmd_validate,
     "publish": cmd_publish,
@@ -461,6 +537,7 @@ _DISPATCH = {
     "resume": cmd_resume,
     "doctor": cmd_doctor,
     "wizard": cmd_wizard,
+    "browser": cmd_browser,
 }
 
 
