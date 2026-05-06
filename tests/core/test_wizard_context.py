@@ -115,3 +115,73 @@ def test_context_marks_credential_status(tmp_path, monkeypatch):
     ctx = build_context(bundled_dir=bundled)
     p = next(p for p in ctx["providers"] if p["name"] == "needy")
     assert p["credential_status"] == "missing"
+
+
+def test_context_per_account_credential_status(tmp_path, monkeypatch):
+    """When the user has 'lewis' account configured but no 'default',
+    the provider's overall status should reflect lewis being ok."""
+    bundled = tmp_path / "bundled"
+    bundled.mkdir()
+    pdir = bundled / "needy"
+    pdir.mkdir()
+    (pdir / "__init__.py").write_text("")
+    (pdir / "provider.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "name": "needy",
+                "display_name": "needy",
+                "media_types": ["longform"],
+                "capabilities": {"draft": True, "publish": False, "schedule": False},
+                "required_credentials": [{"key": "FOO", "description": "foo", "secret": True}],
+                "entry": "provider:P",
+                "schema_version": 1,
+            }
+        ),
+        encoding="utf-8",
+    )
+    (pdir / "provider.py").write_text(
+        "from core.provider import Provider\n"
+        "from core.rules import PlatformRules\n"
+        "class P(Provider):\n"
+        "    name='needy'\n    display_name='needy'\n    media_types=['longform']\n"
+        "    capabilities={'draft': True, 'publish': False, 'schedule': False}\n"
+        "    required_credentials=[]\n    platform_rules=PlatformRules()\n"
+        "    def validate(self,m,t): return None\n"
+        "    def prepare(self,m,t,r): return None\n"
+        "    def execute(self,r,t,m,c): return None\n"
+    )
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    # Configure 'lewis' account (not 'default')
+    from core.credentials import CredentialStore, FileBackend
+    store = CredentialStore(backend=FileBackend())
+    store.set("needy", "lewis", {"FOO": "bar"})
+
+    ctx = build_context(bundled_dir=bundled)
+    p = next(p for p in ctx["providers"] if p["name"] == "needy")
+
+    # Provider-level: ok because at least one account has it
+    assert p["credential_status"] == "ok"
+    # Per-account list shows lewis specifically
+    assert {"name": "lewis", "status": "ok"} in p["accounts"]
+    # Top-level accounts dict has the per-provider grouping
+    assert ctx["accounts"]["needy"] == ["lewis"]
+
+
+def test_context_accounts_grouped_by_provider(tmp_path, monkeypatch):
+    """Top-level accounts is a dict mapping provider name → list of account names."""
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+    monkeypatch.setenv("HOME", str(tmp_path))
+
+    from core.credentials import CredentialStore, FileBackend
+    store = CredentialStore(backend=FileBackend())
+    store.set("p-one", "default", {"K": "v"})
+    store.set("p-one", "alt", {"K": "v"})
+    store.set("p-two", "default", {"K": "v"})
+
+    ctx = build_context(bundled_dir=tmp_path / "no_bundled")
+    accounts = ctx["accounts"]
+    assert isinstance(accounts, dict)
+    assert sorted(accounts["p-one"]) == ["alt", "default"]
+    assert accounts["p-two"] == ["default"]

@@ -16,6 +16,21 @@ from core.errors import MissingCredentialError
 from core.provider import ProviderRegistry
 
 
+def _account_status(
+    store: CredentialStore,
+    provider_name: str,
+    account: str,
+    required_keys: list[str],
+) -> str:
+    if not required_keys:
+        return "n/a"
+    try:
+        store.get(provider_name, account, required_keys=required_keys)
+        return "ok"
+    except MissingCredentialError:
+        return "missing"
+
+
 def build_context(
     bundled_dir: Path | None = None,
     user_dir: Path | None = None,
@@ -23,23 +38,44 @@ def build_context(
 ) -> dict[str, Any]:
     reg = ProviderRegistry(bundled_dir=bundled_dir, user_dir=user_dir)
     s = settings_mod.load()
+    # TODO(plan-4): pass trust_user from settings.trusted_user_providers
+    # to enable third-party providers from ~/.config/mmp/providers/.
     reg.discover(trust_user=False)
 
     store = CredentialStore()
-    accounts = store.list_accounts()
+    flat_accounts = store.list_accounts()  # ["provider:account", ...]
+
+    # Group accounts by provider name for the JSON output
+    accounts_by_provider: dict[str, list[str]] = {}
+    for entry in flat_accounts:
+        if ":" not in entry:
+            continue
+        prov, acct = entry.split(":", 1)
+        accounts_by_provider.setdefault(prov, []).append(acct)
 
     providers_out: list[dict[str, Any]] = []
     for info in reg.list(media_type=media_type):
-        # credential status
-        if not info.required_credentials:
+        keys = [c.key for c in info.required_credentials]
+
+        # Determine accounts to inspect for this provider
+        provider_accounts = accounts_by_provider.get(info.name, [])
+
+        if not keys:
+            # Provider needs no credentials — always ok
             cred_status = "n/a"
+            accounts_detail: list[dict[str, str]] = []
+        elif not provider_accounts:
+            # Needs credentials but vault has no accounts for this provider
+            cred_status = "missing"
+            accounts_detail = []
         else:
-            keys = [c.key for c in info.required_credentials]
-            try:
-                store.get(info.name, "default", required_keys=keys)
-                cred_status = "ok"
-            except MissingCredentialError:
-                cred_status = "missing"
+            accounts_detail = [
+                {"name": acct, "status": _account_status(store, info.name, acct, keys)}
+                for acct in sorted(provider_accounts)
+            ]
+            cred_status = (
+                "ok" if any(a["status"] == "ok" for a in accounts_detail) else "missing"
+            )
 
         providers_out.append(
             {
@@ -52,13 +88,14 @@ def build_context(
                     for c in info.required_credentials
                 ],
                 "credential_status": cred_status,
+                "accounts": accounts_detail,
                 "source": info.source,
             }
         )
 
     return {
         "providers": providers_out,
-        "accounts": accounts,
+        "accounts": accounts_by_provider,
         "settings": {
             "default_mode": s.default_mode,
             "wizard_enabled": s.wizard_enabled,
