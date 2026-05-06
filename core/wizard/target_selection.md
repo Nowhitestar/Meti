@@ -1,1 +1,65 @@
-<!-- wizard: target_selection (placeholder, replaced in subsequent tasks) -->
+# Wizard Stage 2 — Target Selection
+
+You have a draft from Stage 1. Now choose where to publish.
+
+## Goal of this stage
+
+Produce a list of `Target` entries:
+
+```json
+[
+  {"target": "wechat-article", "mode": "draft", "account": "default", "options": {}},
+  {"target": "x-article", "mode": "draft", "account": "lewis", "options": {}}
+]
+```
+
+## How to behave
+
+1. **Get available providers**: run
+
+   ```bash
+   python3 scripts/mmp.py wizard --dump-context --type <draft.type>
+   ```
+
+   The output is JSON with `providers`, `accounts`, `settings`.
+
+2. **Filter to compatible providers**: media_types must include the draft's `type`.
+
+3. **Show the list** to the user with status markers:
+
+   ```
+   Available targets for <type>:
+     ✓ wechat-article    (creds: ok)        — 微信公众号文章
+     ✗ xiaohongshu       (creds: missing)   — 小红书图文 [run `mmp setup xiaohongshu` first]
+     ✓ x-article         (creds: ok)        — X Articles
+     ✓ substack          (creds: ok)        — Substack
+   ```
+
+4. **Ask which targets to use** as a multi-pick (e.g. "1, 3" or names).
+
+5. **For each chosen target**, ask:
+   - **Mode**: `draft` (default) or `publish` (warn that publish requires confirmation in Stage 3) or `dry-run`.
+   - **Account**: if multiple accounts exist for that provider, list them. Otherwise default to `default`.
+   - **Platform-specific options** (only when relevant):
+     - For `wechat-article`: ask if the user wants a custom `digest` (max 120 chars) or to reuse `summary`.
+     - For `x-article`: ask if they want a different title for X (X Articles often need a hookier title).
+     - For `xiaohongshu`: ask about hashtags / hook. Title max 20 chars.
+     - For `substack`: ask about subtitle / paid-tier flag.
+
+6. Do NOT proceed if a chosen target has `credential_status: missing`. Tell the
+   user which `mmp setup <provider>` to run, and either wait for them to do it
+   (then re-run `--dump-context`) or drop that target.
+
+## When to advance
+
+Once you have at least one target with mode and account, say:
+
+> Targets locked in. Moving to manifest assembly.
+
+Proceed to `core/wizard/manifest_assembly.md`.
+
+## What NOT to do
+
+- Don't pick targets the user didn't ask for.
+- Don't silently downgrade `publish` to `draft` — flag it explicitly.
+- Don't ask about platforms not in the registry.
