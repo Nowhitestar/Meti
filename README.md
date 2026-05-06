@@ -1,56 +1,121 @@
-# Multi-media Publisher / 多媒体发布
+# multi-media-publisher
 
-统一调度多平台内容发布的 OpenClaw skill。
+Publish one piece of content to many platforms — 小红书, 微信图文, 微信公众号
+文章, X Articles, Substack — through one manifest, with draft-first safety
+and an encrypted credential vault.
 
-## MVP 目标
+Works as a Claude Code plugin **and** an OpenClaw skill from the same source.
 
-- 图文内容：小红书 + 微信图文内容
-- 长文章：微信公众号文章 + X Articles + Substack 草稿
-- 未来：视频号 / 小红书视频 / 抖音 / B站 / YouTube Shorts
+## Status
 
-## 当前状态
+v0.2 — provider abstraction + 5 first-party providers + conversational
+manifest wizard + age-encrypted vault. See [`docs/HANDOFF.md`](docs/HANDOFF.md).
 
-已完成：
+## Install
 
-- Skill 骨架：`SKILL.md`
-- Manifest schema：`references/manifest-schema.md`
-- 平台矩阵：`references/platform-map.md`
-- 发布安全策略：`references/publishing-policy.md`
-- 候选技能调研：`references/candidate-skills.md`
-- 工作流规划：`references/workflows.md`
-- 示例 manifest：`examples/image-post.yaml`, `examples/longform.yaml`
-- 辅助脚本：
-  - `scripts/publish_manifest.py`：校验 manifest 并创建 run skeleton
-  - `scripts/adapt_content.py`：生成各平台 content pack 草稿
-  - `scripts/prepare_image_post.py`：生成小红书/微信图文 payload 和预览，不发布；同时生成 `wechat-article-api-bridge` payload，可被 `wechat_api_draft.py --dry-run` 直接验证
-  - `scripts/execute_image_post.py`：执行已确认的草稿动作；当前支持小红书本地草稿 + 微信图文操作指南
-  - `scripts/wechat_api_draft.py`：微信公众号 API 草稿助手，支持 dry-run；`draft-from-payload` 可读取 payload 内的 `cover`
-  - `scripts/prepare_longform.py`：生成公众号文章 / X Articles / Substack 长文 payload 和预览，不发布
-  - `scripts/test_local.py` + `Makefile`：本地 smoke test，覆盖 py_compile、image-post prepare、微信 guide、小红书本地 draft、WeChat API dry-run、longform prepare
+### As a Claude Code plugin
 
-## 基本用法
+(Marketplace submission pending — for now, clone the repo and point Claude
+Code at the directory.)
 
 ```bash
-python3 skills/multi-media-publisher/scripts/publish_manifest.py \
-  skills/multi-media-publisher/examples/image-post.yaml
-
-python3 skills/multi-media-publisher/scripts/adapt_content.py \
-  skills/multi-media-publisher/examples/longform.yaml \
-  --out /tmp/mmp-adapt
-
-python3 skills/multi-media-publisher/scripts/prepare_image_post.py \
-  /path/to/image-post.yaml
-
-python3 skills/multi-media-publisher/scripts/execute_image_post.py \
-  /path/to/run-dir --target xiaohongshu --yes-draft
-
-python3 skills/multi-media-publisher/scripts/wechat_api_draft.py \
-  draft-from-payload /path/to/run-dir/packs/wechat-article-api-bridge/payload.json --dry-run
-
-python3 skills/multi-media-publisher/scripts/prepare_longform.py \
-  skills/multi-media-publisher/examples/longform.yaml
-
-make -C skills/multi-media-publisher test
+git clone https://github.com/yxliao-lewis/multi-media-publisher.git
+# Then in Claude Code: settings → plugins → load from directory
 ```
 
-脚本不会真实发布。真实外发必须通过已验证的平台 skill，并遵守 draft-first / confirmation-first 策略。
+After v0.2.0 marketplace submission lands, the install will be:
+
+```
+/plugin install multi-media-publisher
+```
+
+### As an OpenClaw skill
+
+Clone into your skills directory:
+
+```bash
+git clone https://github.com/yxliao-lewis/multi-media-publisher.git \
+  ~/.openclaw/skills/multi-media-publisher
+```
+
+### Python deps
+
+```bash
+pip install -e ".[dev]"
+```
+
+Requires Python 3.10+.
+
+## Quickstart
+
+### Conversational wizard (recommended)
+
+In Claude Code or OpenClaw, just say what you want:
+
+> 帮我把这篇文章发到公众号、X 长文章、Substack 草稿。
+
+Claude reads `core/wizard/*.md` and walks you through source extraction →
+target selection → manifest assembly → draft.
+
+### CLI
+
+```bash
+# Validate a manifest
+mmp validate examples/longform.yaml
+
+# Configure credentials for a provider
+mmp setup wechat-article
+
+# Run a publish (defaults to draft mode in the manifest)
+mmp publish examples/longform.yaml
+
+# List providers / accounts / runs
+mmp list providers
+mmp list accounts
+mmp list runs
+
+# Self-check
+mmp doctor
+```
+
+## Safety
+
+- Default `mode: draft`. Public publishing requires explicit `mode: publish`
+  in the manifest **plus** an in-conversation confirmation.
+- Credentials are stored in `~/.config/mmp/credentials.json.age` (age-encrypted).
+- Secrets never appear in `result.json`, `publish-log.md`, or printed output.
+- Full policy: [`docs/safety-policy.md`](docs/safety-policy.md).
+
+## Architecture
+
+- [`docs/architecture.md`](docs/architecture.md) — high-level overview
+- [`docs/provider-contract.md`](docs/provider-contract.md) — write your own provider
+- [`docs/credentials.md`](docs/credentials.md) — vault and ENV usage
+- [`docs/manual-verification.md`](docs/manual-verification.md) — pre-release checklist
+- [`docs/superpowers/specs/`](docs/superpowers/specs/) — full design spec
+
+## Project layout
+
+```
+core/                    # host-agnostic Python (manifest, providers, vault, runs)
+providers/               # bundled first-party providers
+  wechat_article/
+  xiaohongshu/
+  wechat_image/
+  x_article/
+  substack/
+scripts/mmp.py           # CLI entry
+.claude-plugin/          # Claude Code plugin manifest
+SKILL.md                 # OpenClaw + Claude Code skill manifest
+docs/                    # user-facing docs
+tests/                   # core tests + integration tests
+```
+
+## Contributing
+
+- New provider? Read [`docs/provider-contract.md`](docs/provider-contract.md).
+- Bug or design discussion? Open an issue.
+
+## License
+
+MIT.

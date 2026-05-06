@@ -1,0 +1,15 @@
+schema_version: "0.2"
+type: longform
+title: "Test Article"
+body: ./longform-wechat.body.md
+mode: dry-run
+language: zh-CN
+targets:
+  - wechat-article
+  - target: x-article
+    mode: draft
+    account: lewis
+assets:
+  cover: ./cover.png
+tags:
+  - test

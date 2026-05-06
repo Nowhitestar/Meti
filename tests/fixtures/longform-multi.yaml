@@ -1,0 +1,18 @@
+schema_version: "0.2"
+type: longform
+title: "Example Longform"
+body: ./longform-multi.body.md
+mode: dry-run
+language: zh-CN
+targets:
+  - wechat-article
+  - x-article
+  - substack
+assets:
+  cover: ./longform-cover.png
+summary: "A quick summary."
+metadata:
+  digest: "公众号摘要"
+  subtitle: "Substack subtitle"
+tags:
+  - test

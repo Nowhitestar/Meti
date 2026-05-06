@@ -4,3 +4,10 @@ __pycache__/
 runs/
 .env
 *.log
+
+# v0.2 additions
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
