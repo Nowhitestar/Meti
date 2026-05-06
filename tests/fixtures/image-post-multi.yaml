@@ -1,0 +1,16 @@
+schema_version: "0.2"
+type: image-post
+title: "AI 创业的三个误区"
+body: ./image-post-multi.body.md
+mode: dry-run
+language: zh-CN
+targets:
+  - xiaohongshu
+  - wechat-image
+assets:
+  images:
+    - ./img-01.png
+    - ./img-02.png
+tags:
+  - AI
+  - 创业
