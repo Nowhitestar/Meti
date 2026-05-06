@@ -8,6 +8,7 @@ The wizard subcommand is implemented in Plan 2.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -44,9 +45,20 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("doctor", help="Self-check: vault, providers, health")
 
-    sub_wizard = sub.add_parser("wizard", help="Conversational manifest wizard (Plan 2)")
+    sub_wizard = sub.add_parser("wizard", help="Conversational manifest wizard")
     sub_wizard.add_argument("--type", choices=["image-post", "longform", "video-post"])
     sub_wizard.add_argument("--targets", default=None, help="Comma-separated target names")
+    sub_wizard.add_argument(
+        "--dump-context",
+        action="store_true",
+        help="Dump current context as JSON for Claude to read",
+    )
+    sub_wizard.add_argument(
+        "--commit",
+        metavar="MANIFEST_PATH",
+        default=None,
+        help="Validate a manifest YAML and persist as a new run dir",
+    )
 
     return p
 
@@ -256,7 +268,27 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
 
 def cmd_wizard(args: argparse.Namespace) -> int:
-    print("wizard subcommand will be implemented in Plan 2.", file=sys.stderr)
+    if args.dump_context:
+        from core.wizard.context import build_context
+        ctx = build_context(media_type=args.type)
+        print(json.dumps(ctx, indent=2, ensure_ascii=False))
+        return 0
+    if args.commit:
+        from core.errors import MMPError
+        from core.wizard.commit import commit_manifest
+        try:
+            run_dir = commit_manifest(args.commit)
+            print(f"RUN_DIR  {run_dir}")
+            return 0
+        except MMPError as e:
+            print(f"ERROR  {e}", file=sys.stderr)
+            return 2
+    # interactive (no flags) — Claude is expected to drive via SKILL.md prompts
+    print(
+        "wizard interactive mode is driven by Claude reading core/wizard/*.md.\n"
+        "Run with --dump-context to fetch state, or --commit <path> to persist a manifest.",
+        file=sys.stderr,
+    )
     return 1
 
 

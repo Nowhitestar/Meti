@@ -1,10 +1,7 @@
-from pathlib import Path
-
 import pytest
 
 from core.errors import ManifestError
 from core.wizard.commit import commit_manifest
-
 
 VALID_YAML = """\
 schema_version: "0.2"
