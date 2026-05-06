@@ -276,12 +276,14 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 def cmd_wizard(args: argparse.Namespace) -> int:
     if args.dump_context:
         from core.wizard.context import build_context
+
         ctx = build_context(media_type=args.type)
         print(json.dumps(ctx, indent=2, ensure_ascii=False))
         return 0
     if args.commit:
         from core.errors import MMPError
         from core.wizard.commit import commit_manifest
+
         try:
             run_dir = commit_manifest(args.commit)
             print(f"RUN_DIR  {run_dir}")
