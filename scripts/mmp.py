@@ -199,11 +199,17 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
     store = CredentialStore()
     values: dict[str, str] = {}
-    print(f"Configure {args.provider} (account: {args.account}). Press Enter to skip a key.")
+    print(
+        f"Configure {args.provider} (account: {args.account}). "
+        "Press Enter to skip a key.\n"
+        "(For Claude-driven setup, see core/wizard/credential_setup.md.)"
+    )
     for spec in provider.required_credentials:
         prompt = f"  {spec.key}"
         if spec.description:
             prompt += f" ({spec.description})"
+        if spec.setup_hint:
+            prompt += f"  hint: {spec.setup_hint}"
         prompt += ": "
         if spec.secret:
             import getpass
