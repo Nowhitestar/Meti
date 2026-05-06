@@ -74,13 +74,13 @@ ask in the active conversation.
 
 ## v0.2 supported providers
 
-| Provider | Media | Modes |
+| Provider | Media | Mode support |
 |---|---|---|
-| `wechat-article` | longform | dry-run, draft (Plan 1) |
-| `xiaohongshu` | image-post | (Plan 3) |
-| `wechat-image` | image-post | (Plan 3) |
-| `x-article` | longform | (Plan 3) |
-| `substack` | longform | (Plan 3) |
+| `wechat-article` | longform | dry-run, draft (real WeChat API; needs AppID/AppSecret) |
+| `xiaohongshu` | image-post (video planned) | dry-run, draft (local draft via xiaohongshu skill) |
+| `wechat-image` | image-post | dry-run, draft (browser-flow guide) |
+| `x-article` | longform | dry-run, draft (payload + TODO; no connector in v0.2) |
+| `substack` | longform | dry-run, draft (payload + TODO; no connector in v0.2) |
 
 ## Safety rules
 
