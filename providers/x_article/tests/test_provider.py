@@ -53,7 +53,7 @@ def test_execute_dry_run(article, tmp_path):
 
 
 def test_execute_draft_returns_stub(article, tmp_path):
-    """v0.2: no real X connector. Draft falls back to dry-run-like result with TODO note."""
+    """v0.2: no real X connector. Draft falls back to stub result with TODO note."""
     run_dir = tmp_path / "run"
     (run_dir / "packs" / "x-article").mkdir(parents=True)
     p = XArticleProvider()
@@ -64,7 +64,7 @@ def test_execute_draft_returns_stub(article, tmp_path):
         mode="draft",
         credentials={"X_AUTH_TOKEN": "stub"},
     )
-    assert res.mode_actual == "dry-run"
+    assert res.mode_actual == "stub"
     assert res.extras.get("connector_status") == "not-implemented"
 
 

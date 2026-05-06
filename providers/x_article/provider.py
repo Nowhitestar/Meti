@@ -2,7 +2,7 @@
 
 A real connector (likely the `x-articles` skill or browser automation) is not
 shipped in v0.2. `execute` writes a TODO marker into the run dir and returns
-mode_actual=dry-run, so multi-target manifests can still progress past this
+mode_actual=stub, so multi-target manifests can still progress past this
 target without failing the run.
 """
 
@@ -83,7 +83,7 @@ class XArticleProvider(Provider):
         )
         return ExecutionResult(
             status="ok",
-            mode_actual="dry-run",
+            mode_actual="stub",
             external_id=None,
             extras={"connector_status": "not-implemented"},
         )

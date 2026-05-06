@@ -54,7 +54,7 @@ def test_execute_draft_returns_stub(article, tmp_path):
         mode="draft",
         credentials={"SUBSTACK_SESSION_COOKIE": "stub"},
     )
-    assert res.mode_actual == "dry-run"
+    assert res.mode_actual == "stub"
     assert res.extras.get("connector_status") == "not-implemented"
 
 

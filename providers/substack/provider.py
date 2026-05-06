@@ -1,8 +1,8 @@
 """Substack provider — payload-only stub.
 
 A real connector (substack-autopilot or generic browser) is not shipped in
-v0.2. Behavior parallels x_article: payload + TODO marker + dry-run-like
-result.
+v0.2. Behavior parallels x_article: payload + TODO marker + stub
+result (mode_actual=stub).
 """
 
 from __future__ import annotations
@@ -83,7 +83,7 @@ class SubstackProvider(Provider):
         )
         return ExecutionResult(
             status="ok",
-            mode_actual="dry-run",
+            mode_actual="stub",
             external_id=None,
             extras={"connector_status": "not-implemented"},
         )

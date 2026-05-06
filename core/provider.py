@@ -56,7 +56,7 @@ class PreparedPayload:
 @dataclass
 class ExecutionResult:
     status: str  # "ok" | "failed" | "skipped" | "partial"
-    mode_actual: str  # "dry-run" | "draft-local" | "draft-platform" | "published"
+    mode_actual: str  # "dry-run" | "stub" | "draft-local" | "draft-platform" | "published"
     external_id: str | None = None
     draft_url: str | None = None
     extras: dict[str, Any] = field(default_factory=dict)
