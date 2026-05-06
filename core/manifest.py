@@ -119,9 +119,13 @@ def _from_dict(raw: dict[str, Any], base_dir: Path, source: Path) -> Manifest:
     targets = [_parse_target(t, mode, default_account, default_options) for t in raw_targets]
 
     assets = raw.get("assets") or {}
-    cover = assets.get("cover")
-    images = list(assets.get("images") or [])
-    video = assets.get("video")
+    cover = _resolve_asset_path(assets.get("cover"), base_dir)
+    images = [
+        resolved
+        for p in (assets.get("images") or [])
+        if (resolved := _resolve_asset_path(p, base_dir)) is not None
+    ]
+    video = _resolve_asset_path(assets.get("video"), base_dir)
 
     return Manifest(
         schema_version=sv,
@@ -140,6 +144,22 @@ def _from_dict(raw: dict[str, Any], base_dir: Path, source: Path) -> Manifest:
         metadata=dict(raw.get("metadata") or {}),
         source_path=source,
     )
+
+
+def _resolve_asset_path(value: Any, base_dir: Path) -> str | None:
+    """Resolve a relative asset path (cover/image/video) to absolute.
+
+    Strings starting with ``./`` or ``../`` are joined with base_dir and
+    resolved. Absolute paths and ``None`` pass through. Other strings (e.g.
+    ``http://...`` URLs) also pass through unchanged.
+    """
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise ManifestError(f"asset path must be string, got {type(value).__name__}")
+    if value.startswith("./") or value.startswith("../"):
+        return str((base_dir / value).resolve())
+    return value
 
 
 def _resolve_inline_or_path(value: Any, base_dir: Path) -> str:
