@@ -455,9 +455,59 @@ The next milestone:
 
 ### v0.2 ship checklist
 
-- [ ] All 4 plans' tasks completed and committed
-- [ ] CI green on all matrix jobs
-- [ ] `mmp doctor` clean on a fresh machine after `pip install -e .`
-- [ ] Real-account verification (see `docs/manual-verification.md`) green
+- [x] All 4 plans' tasks completed and committed (76 commits)
+- [ ] CI green on all matrix jobs (verifies on push)
+- [x] `mmp doctor` clean on a fresh machine after `pip install -e .`
+- [x] Real-account verification (see `docs/manual-verification.md`) green
+  - wechat-article: real draft created on mp.weixin.qq.com (media_id `WbX2nHWvJ4Nnr7sz...`); 4 real bugs found+fixed (asset path resolution, placeholder PNG, IP whitelist, etc.)
+  - xiaohongshu: real local draft via skill's draft.sh; 3 real bugs found+fixed (path discovery, invocation contract, empty required_credentials)
+  - wechat-image / x-article / substack: deferred to v0.2.x or v0.3 (not blockers per spec — wechat-image is browser-flow guide, x/substack are stubs)
 - [ ] Tag `v0.2.0`
 - [ ] Submit to Claude Code plugin marketplace
+
+### Discovered during real-account verification (already fixed in branch)
+
+7 real integration bugs that v0.2's mock-based tests didn't catch:
+
+1. **Manifest asset paths**: `core/manifest.py` did not resolve `./` prefixes
+   for `assets.cover/images/video`. providers got bare relative paths and
+   couldn't find files. Fixed via `_resolve_asset_path()` helper that
+   mirrors `_resolve_inline_or_path` semantics. (`f72c522`)
+
+2. **examples/cover.png**: 1×1 placeholder PNG (81 bytes) — WeChat
+   `material/add_material?type=thumb` returns `errcode 40113 unsupported
+   file type`. Replaced with a real 900×500 PNG. (`f72c522`)
+
+3. **xiaohongshu path discovery**: searched
+   `~/.openclaw/skills/xiaohongshu/scripts/draft.sh` but real install on
+   user's machine was at `~/.openclaw/workspace/skills/...`. Added the
+   workspace path + `XHS_DRAFT_SH` env var override. (`aba9ddd`)
+
+4. **xiaohongshu draft.sh contract**: passed `--payload <file>
+   --cookie <file>` flags, but draft.sh actually takes a single positional
+   JSON string and never reads a cookie. Rewrote `_invoke_local_draft`. (`aba9ddd`)
+
+5. **xiaohongshu output parsing**: draft.sh emits human-readable
+   `"✓ 已创建本地草稿: <path>"` to stdout, not JSON. Added regex parse. (`aba9ddd`)
+
+6. **xiaohongshu required_credentials**: marked XHS_COOKIE_PATH required,
+   but local-draft path needs no credentials. Made the list empty. (`aba9ddd`)
+
+7. **`cmd_publish` empty required_keys**: when a provider declares zero
+   required credentials, `store.get(..., required_keys=[])` treated `[]`
+   as None and raised `MissingCredentialError(['*'])`. Fixed in
+   `cmd_publish` to skip vault lookup when `required` is empty. (`aba9ddd`)
+
+These bugs validate the v0.3 priority of getting real-account verification
+into a `mmp verify-<provider>` runbook so future provider migrations catch
+contract drift before users do.
+
+### Operational pain (v0.3 first task)
+
+Real-account verification of wechat-article from a home / split-routing
+network revealed that **WeChat API sees a different outbound IP than
+ipinfo.io** (`115.199.114.116` vs `103.129.180.55`). Each network change
+will require updating the IP whitelist; 50-IP ceiling will eventually
+cap out. **v0.3 should ship `WECHAT_API_PROXY` env var support + a
+Cloudflare Worker proxy template** so users with non-static IPs can route
+WeChat API through a single static-IP bastion.

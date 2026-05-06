@@ -1,8 +1,14 @@
 # Changelog
 
-## 0.2.0 — 2026-05-XX
+## 0.2.0 — 2026-05-06
 
 Major refactor: provider abstraction + dual-host distribution + wizard.
+
+Real-account verified end-to-end: `wechat-article` creates real drafts
+on `mp.weixin.qq.com`; `xiaohongshu` creates real local drafts via the
+xhs skill's `draft.sh`. 7 integration bugs discovered + fixed during
+verification. See `docs/HANDOFF.md` "Discovered during real-account
+verification" for the full list.
 
 ### Added
 
