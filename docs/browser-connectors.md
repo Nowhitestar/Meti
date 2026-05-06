@@ -1,172 +1,199 @@
 # Browser-flow connectors (v0.3.1+)
 
-Some platforms (X Articles, Substack, future ones) have no public draft
-API or have an API gated behind onboarding most users won't pass. mmp
-drives a real Chromium browser via [Playwright][pw] for these, using a
-saved login session.
+Some platforms (X Articles, Substack) have no public draft API. mmp
+drives the user's **real Chrome** via the [OpenCLI Browser
+Bridge][opencli], which is a Chrome extension + small local daemon
+that exposes browser primitives over a CLI.
 
-[pw]: https://playwright.dev/python/
+[opencli]: https://github.com/jackwener/opencli
 
-The browser layer is **opt-in**: install with the `[browser]` extra,
-configure each provider once, and only providers that opt into browser
-flows (`browser_login_url` set on the Provider class) are touched.
+The advantage over a fresh-Chromium / Playwright approach:
+
+- **No automation detection.** X / Google / Cloudflare don't flag
+  your real Chrome as a bot — it's literally your browser.
+- **No separate login.** Your existing X / Substack login session is
+  reused as-is; no captcha re-solving, no 2FA dance per use.
+- **No state files to manage.** Login state lives in your Chrome
+  profile, exactly where you'd expect.
+- **No CDP debug-port dance.** OpenCLI extension talks to its
+  daemon via WebSocket; no `--remote-debugging-port` hassle.
+
+Trade-offs:
+
+- One-time Chrome extension install
+- Node.js >= 21 prerequisite (OpenCLI is a Node CLI)
+- Selectors break when the platform ships UI changes (same as any
+  browser-driving solution); selectors are isolated as constants
+  at the top of each provider's `internal/browser_flow.py` for easy
+  patching
 
 ## When you need this
 
-| Provider | Auth model | This guide applies? |
+| Provider | Auth model | Browser flow? |
 |---|---|---|
 | `wechat-article` | API + AppID/Secret | No (use API) |
 | `xiaohongshu` | Local skill via `draft.sh` | No |
 | `wechat-image` | Manual browser-flow guide | No (manual) |
-| `x-article` | Browser session | **Yes** |
-| `substack` | Browser session | **Yes** |
-
-If you only publish to wechat-article + xiaohongshu, you can ignore this
-file entirely.
+| `x-article` | Browser session via OpenCLI | **Yes** |
+| `substack` | Browser session via OpenCLI | **Yes** (v0.3.2+) |
 
 ## Setup
 
-### 1. Install the optional dependency
+### 1. Install Node.js
 
 ```bash
-pip install -e ".[browser]"
-playwright install chromium
+# macOS
+brew install node
+
+# Ubuntu / Debian
+sudo apt install nodejs npm
+
+# Verify (need 21+)
+node --version
 ```
 
-The Chromium download is ~120 MB. If you've installed Playwright before
-for another project, `playwright install chromium` is a no-op.
+### 2. Install the OpenCLI Chrome extension
 
-### 2. Capture login state per provider
+Open the Chrome Web Store: <https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk>
 
-Run once for each provider you'll use:
-
-```bash
-mmp browser login x-article
-```
-
-This:
-1. Opens a **headed** Chromium window at `https://x.com/i/flow/login`
-2. You log in normally (including 2FA, captcha, anything X throws at you)
-3. When you're on a logged-in page (your home feed, profile, etc.),
-   come back to the terminal and press Enter
-4. mmp saves cookies + localStorage to
-   `~/.config/mmp/browser-state/x-article.json` (chmod 600)
-
-The saved state is reused for headless draft creation later — no further
-login needed until the session expires.
+Click "Add to Chrome". Confirm the extension is enabled at
+`chrome://extensions`.
 
 ### 3. Verify
 
 ```bash
 mmp browser status
-#   x-article             saved 2026-05-06 12:34 UTC  (~/.config/mmp/browser-state/x-article.json)
+# → OK  Browser Bridge connected. Current tab: ...
 ```
 
-### 4. Create a draft
+If you see "Browser Bridge extension not connected", the extension
+isn't installed or Chrome isn't running. Start Chrome and re-check.
+
+For deeper diagnostic:
+
+```bash
+mmp browser doctor
+```
+
+### 4. Make sure you're logged in
+
+`mmp browser login <provider>` opens the provider's login URL **in
+your real Chrome**. If you're already logged in, it's a no-op.
+
+```bash
+mmp browser login x-article    # opens https://x.com/i/flow/login
+mmp browser login substack     # opens https://substack.com/sign-in (v0.3.2+)
+```
+
+### 5. Create a draft
 
 ```bash
 mmp publish examples/longform.yaml --mode-override draft
 ```
 
-If a target with `browser_login_url` (currently x-article, substack) is
-in the manifest, mmp will:
-1. Check if state exists → if not, fall back to "stub" mode and write
-   `TODO-connector.md` with setup instructions
-2. Launch headless Chromium with the saved state
-3. Navigate, fill the editor, click Save Draft
-4. Capture the draft URL / ID, return as `external_id`
+If the manifest includes a browser-flow provider (currently x-article;
+substack landing in v0.3.2), mmp:
 
-## Session lifecycle
+1. Calls `opencli browser open <provider compose URL>` in your Chrome
+2. Drives the editor (type title, body, etc.)
+3. X / Substack auto-saves while we type
+4. Captures the draft URL / ID, returns as `external_id`
 
-Sessions don't last forever. Both X and Substack invalidate cookies
-after periods of inactivity (typically 1–4 weeks).
+If the bridge isn't connected, the run gracefully falls back to
+"stub" mode: writes a `TODO-connector.md` with manual instructions
+in the run dir. The other targets (wechat-article, etc.) still run.
 
-When that happens:
-- `mmp publish ...` fails on the browser flow with a `RuntimeError`
-  about the compose page not loading
-- `result.json` shows `status: failed` with a message pointing at
-  re-running `mmp browser login <provider>`
+## Session expiry
 
-Re-capture:
+Browser sessions don't last forever. When X or Substack invalidates
+your cookies (typically 1–4 weeks of inactivity), `mmp publish` fails
+on the browser flow with a "redirected to login" error. Just go to
+the provider's site in your Chrome, log in normally, then retry:
 
 ```bash
-mmp browser logout x-article    # delete stale state
-mmp browser login x-article     # capture fresh
-mmp resume <run-dir>            # retry the failed run
+# Just open it; X / Substack remembers the rest.
+mmp browser login x-article
+mmp resume <run-dir>
 ```
 
-## CI / headless-only environments
+## CI / headless environments
 
-The browser flow is local-only by design. Use cases like CI that don't
-have a real browser shouldn't enable the `[browser]` extra. Without
-Playwright installed, browser-flow providers fall back to writing
-`TODO-connector.md` and reporting `mode_actual="stub"` — multi-target
-manifests still progress, x-article/substack just become manual steps.
+Browser-flow providers are local-only by design. CI doesn't have a
+real Chrome with your logins, so these providers fall back to stub
+mode automatically — multi-target manifests still progress, with
+x-article / substack becoming manual steps in the run dir.
 
 ## Selector drift / when the connector breaks
 
-X and Substack ship UI changes regularly. When they break our selectors,
+X and Substack ship UI changes regularly. When they break selectors,
 the symptom is usually:
 
 ```
-RuntimeError: x-article compose page didn't load (selector
-'[data-testid="articleTitle"]'). Likely causes: session expired
-(re-run `mmp browser login x-article`), or X changed their UI (update
-selectors in providers/x_article/internal/browser_flow.py).
+RuntimeError: x compose/articles: 'Write new' button not found.
+Tried selectors: [...]. Update WRITE_BUTTON_CANDIDATES in
+providers/x_article/internal/browser_flow.py.
 ```
 
 Fix path:
-1. Open the provider's `internal/browser_flow.py` (e.g.
-   `providers/x_article/internal/browser_flow.py`)
-2. Selectors are constants at the top of the file (TITLE_SELECTOR,
-   BODY_SELECTOR, SAVE_DRAFT_BUTTON_TEXT, DRAFT_SAVED_INDICATOR)
-3. Run `mmp browser login <provider>` to open a headed window, use
-   browser DevTools to find the new selectors
-4. Update the constants, run `make test`, file a PR
+
+1. Use OpenCLI to inspect the live page:
+   ```bash
+   npx @jackwener/opencli browser open https://x.com/compose/articles
+   npx @jackwener/opencli browser state | head -100
+   npx @jackwener/opencli browser find --css '[data-testid]' --limit 30
+   ```
+2. Find the new selector(s)
+3. Update the candidates list in the provider's `internal/browser_flow.py`
+4. `mmp publish ... --mode-override draft` to verify
+
+## i18n caveats
+
+Selectors in the current x-article connector target X's **Chinese
+UI** (Lewis's account locale). Title placeholder is `添加标题`; we
+also try `Add a title` for English UI. If your locale is different
+(Spanish, French, etc.), update `TITLE_SELECTOR_CANDIDATES` in
+`providers/x_article/internal/browser_flow.py` to add your
+placeholder. PRs welcome.
 
 ## Security
 
-- Browser state files contain session cookies and localStorage data.
-  Treat them like a password.
-- Never commit `~/.config/mmp/browser-state/*.json` to git (covered by
-  default `.gitignore` since it's outside the repo).
-- Don't share state files across machines unless both are yours.
-- If you suspect compromise: `mmp browser logout <provider>` to delete,
-  then on the platform site, log out of all sessions to invalidate the
-  stolen cookies, then `mmp browser login <provider>` to recapture.
-
-## Troubleshooting
-
-### `BrowserStateMissingError: no saved browser state for 'x-article'`
-
-You haven't run `mmp browser login x-article` yet. Run it.
-
-### `BrowserNotInstalledError: playwright is not installed`
-
-`pip install -e ".[browser]"` and `playwright install chromium`.
-
-### Login window opens but I can't tell if I'm logged in
-
-X / Substack URLs aren't always a clear indicator. If `home`, `dashboard`,
-or your profile page loads — you're in. Press Enter on the terminal.
-
-### `playwright install` hangs on the download
-
-Check your network. The Chromium binaries come from `playwright.azureedge.net`
-(120 MB). If you're on a restricted network, you may need to mirror —
-see Playwright's docs on `PLAYWRIGHT_BROWSERS_PATH`.
-
-### Draft was saved but `external_id` is empty
-
-X doesn't always update the URL on draft save. Fall back to checking the
-draft listing manually. Future: parse the toast / response to extract
-the article ID more reliably.
+- Your X / Substack cookies live in **your** Chrome, not in mmp.
+- mmp doesn't read cookie databases or copy login state.
+- `result.json` and `publish-log.md` only record draft URLs and IDs
+  — no session tokens.
+- The OpenCLI extension only acts when you (or mmp on your behalf)
+  call `opencli browser ...`. Audit by running
+  `npx @jackwener/opencli doctor`.
 
 ## Roadmap
 
-- v0.3.1: x-article connector (this PR), stub fallback, docs
-- v0.3.2: substack connector
-- v0.4: per-provider session refresh detection (auto-prompt re-login
-  when health_check sees stale cookies)
-- v0.4: proxy support (route Playwright traffic through SOCKS5 for users
-  on restricted networks)
+- **v0.3.1**: x-article connector (this)
+- **v0.3.2**: substack connector (PR-B)
+- **v0.4**: per-provider session-expiry detection (auto-prompt re-login)
+- **v0.4**: cover image upload across browser-flow providers
+- **v0.4**: contribute reusable adapters back to OpenCLI upstream
+  (e.g. `opencli substack draft-create`)
+
+## Why not Playwright?
+
+v0.3.1 originally used Playwright with a fresh Chromium. Two
+problems blocked verification:
+
+1. **Google OAuth (and other anti-bot) detected Playwright** and
+   refused logins. X uses Google OAuth as a sign-in option; that
+   path was unusable.
+2. **Reusing the user's real Chrome via CDP** required them to
+   re-launch Chrome with `--remote-debugging-port` and other flags,
+   AND a non-default user-data-dir (Chrome refuses CDP on the
+   default profile for security). That's heavy friction for an
+   end-user setup.
+
+OpenCLI sidesteps both: an extension + daemon attaches inside the
+user's existing Chrome session, so anti-bot defenses see the same
+browser they'd see if the user were clicking manually.
+
+## Related links
+
+- OpenCLI repo: <https://github.com/jackwener/opencli>
+- Chrome extension: <https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk>
+- mmp PR introducing this: <https://github.com/Nowhitestar/multi-media-publisher/pull/3>

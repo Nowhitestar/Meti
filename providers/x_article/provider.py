@@ -72,55 +72,44 @@ class XArticleProvider(Provider):
         if mode == "dry-run":
             return ExecutionResult(status="ok", mode_actual="dry-run", external_id=None)
 
-        # mode == draft. Try browser flow; fall back to stub if prerequisites missing.
+        # mode == draft. Try OpenCLI-driven browser flow; fall back to stub
+        # if the bridge isn't connected (extension missing, Chrome not running).
         from core import browser as br
 
         pack_dir = run_dir / "packs" / self.name
         payload_path = pack_dir / "payload.json"
         payload = json.loads(payload_path.read_text(encoding="utf-8"))
 
-        if not br.state_exists(self.name):
-            self._write_stub(pack_dir, reason="no-browser-state")
+        if not br.is_connected():
+            self._write_stub(pack_dir, reason="bridge-not-connected")
             return ExecutionResult(
                 status="ok",
                 mode_actual="stub",
                 external_id=None,
                 extras={
-                    "connector_status": "no-browser-state",
-                    "remediation": "run `mmp browser login x-article` to capture a session",
+                    "connector_status": "bridge-not-connected",
+                    "remediation": "install OpenCLI Chrome extension + open Chrome; "
+                    "see docs/browser-connectors.md",
                 },
             )
 
-        # Lazy import: only fails if [browser] extra not installed.
-        try:
-            from providers.x_article.internal.browser_flow import create_draft
-        except br.BrowserNotInstalledError:
-            self._write_stub(pack_dir, reason="playwright-not-installed")
-            return ExecutionResult(
-                status="ok",
-                mode_actual="stub",
-                external_id=None,
-                extras={
-                    "connector_status": "playwright-not-installed",
-                    "remediation": 'install with `pip install -e ".[browser]"` then `playwright install chromium`',
-                },
-            )
+        from providers.x_article.internal.browser_flow import create_draft
 
         try:
-            result = create_draft(payload, headless=True)
-        except br.BrowserStateMissingError as exc:
-            self._write_stub(pack_dir, reason="state-missing")
+            result = create_draft(payload)
+        except br.BrowserNotConnectedError as exc:
+            self._write_stub(pack_dir, reason="bridge-not-connected")
             raise ProviderExecutionError(
                 target=self.name,
-                step="browser_session",
+                step="browser_bridge",
                 upstream=exc,
                 retryable=True,
             ) from exc
         except br.BrowserNotInstalledError as exc:
-            self._write_stub(pack_dir, reason="playwright-not-installed")
+            self._write_stub(pack_dir, reason="opencli-not-installed")
             raise ProviderExecutionError(
                 target=self.name,
-                step="browser_session",
+                step="browser_bridge",
                 upstream=exc,
                 retryable=False,
             ) from exc
@@ -143,22 +132,21 @@ class XArticleProvider(Provider):
     def health_check(self, credentials: dict[str, str]) -> HealthStatus:
         from core import browser as br
 
-        if br.state_exists(self.name):
-            return HealthStatus.ok
-        return HealthStatus.failed
+        return HealthStatus.ok if br.is_connected() else HealthStatus.failed
 
     @staticmethod
     def _write_stub(pack_dir: Path, *, reason: str) -> None:
         (pack_dir / "TODO-connector.md").write_text(
             f"# x-article browser connector skipped (reason: {reason})\n\n"
             "Payload is ready at `payload.json`. To complete the draft:\n\n"
-            "**Option A (recommended): set up the browser connector**\n\n"
-            "```bash\n"
-            'pip install -e ".[browser]"\n'
-            "playwright install chromium\n"
-            "mmp browser login x-article  # one-time login flow\n"
-            "mmp resume <this-run-dir>     # retries with browser\n"
-            "```\n\n"
+            "**Option A (recommended): set up the OpenCLI Browser Bridge**\n\n"
+            "1. Install Node.js 21+: `brew install node` (macOS)\n"
+            "2. Install the Chrome extension:\n"
+            "   https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk\n"
+            "3. Make sure you're logged in to X in Chrome\n"
+            "4. Verify: `mmp browser status`\n"
+            "5. Retry: `mmp resume <this-run-dir>`\n\n"
+            "Setup details: docs/browser-connectors.md\n\n"
             "**Option B: manually create the draft**\n\n"
             "1. Open https://x.com/i/articles/compose in a logged-in browser\n"
             "2. Paste title from payload.title\n"

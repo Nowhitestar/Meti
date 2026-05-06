@@ -1,180 +1,260 @@
-"""Browser session manager backed by Playwright (optional dependency).
+"""Browser automation backend — wraps the OpenCLI Browser Bridge.
 
-Used by providers that need real browser automation (x-article, substack).
-Install with::
+Background
+----------
+Earlier versions of this module used Playwright with a fresh Chromium
+instance. That ran into two problems:
 
-    pip install -e ".[browser]"
-    playwright install chromium
+1. Sites with anti-automation defenses (Google OAuth, Cloudflare, etc.)
+   detect Playwright's flags and block login. Users couldn't sign in to
+   X / Substack via the fresh Chromium.
+2. CDP attach to user's real Chrome required ``--remote-debugging-port``
+   plus ``--remote-allow-origins``, which most users don't have set up
+   and is friction to configure.
 
-Without Playwright installed, any caller gets a ``BrowserNotInstalledError``
-with install instructions. The rest of mmp keeps working — only providers
-that explicitly opt into browser flows are affected.
+OpenCLI (https://github.com/jackwener/opencli) solves both via a Chrome
+extension + local daemon. The user installs the extension once into
+their normal Chrome (where they're already logged in to everything),
+and any tool can drive that Chrome via the ``opencli browser`` CLI.
 
-Session state (cookies + localStorage) for each provider is persisted at
-``~/.config/mmp/browser-state/<provider>.json`` (chmod 600). The state
-file is treated as sensitive: don't commit it, don't share it.
+This module wraps ``opencli browser`` subcommands as a Python class so
+mmp providers can drive automation without caring about the underlying
+backend. The OpenCLI binary is invoked via ``npx`` so users don't need
+a separate global install.
 
-The contract this module exposes:
+Setup
+-----
+1. Install Node.js >= 21
+2. Install the Chrome extension:
+   https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk
+3. Verify with ``mmp browser status``
 
-- ``state_path(provider)`` / ``state_exists(provider)`` — check whether
-  a saved login exists
-- ``browser_context(provider, headless=True, require_state=True)`` —
-  context manager yielding a logged-in BrowserContext
-- ``login_interactive(provider, login_url, ready_indicator=None)`` —
-  headed flow, user logs in once, state is saved
-- ``save_state(ctx, provider)`` — persist a BrowserContext's storage
+State / sessions
+----------------
+Unlike the previous Playwright design, mmp does NOT store any browser
+state. Login state lives in the user's own Chrome profile, exactly as
+they would expect. ``mmp browser login`` is therefore a no-op pointer
+to the provider's actual login URL — open it in Chrome, log in
+normally, mmp can drive Chrome for you afterward.
 
-Error model: every public function may raise ``BrowserNotInstalledError``
-(playwright not installed) or ``BrowserStateMissingError`` (no saved
-login for that provider yet). Both are subclasses of ``MMPError``.
+Error model
+-----------
+- ``BrowserNotInstalledError`` (MMPError): OpenCLI not on PATH and npx
+  fetch failed. Install Node.js + retry, or install opencli globally.
+- ``BrowserNotConnectedError`` (MMPError): OpenCLI is callable but
+  reports the Browser Bridge extension is not connected (extension not
+  installed / disabled / Chrome not running).
+- ``BrowserCommandError`` (MMPError): an opencli command exited
+  non-zero with stderr that didn't match a known pattern.
 """
 
 from __future__ import annotations
 
-import os
-from collections.abc import Iterator
-from contextlib import contextmanager
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+import json
+import shutil
+import subprocess
+from typing import Any
 
-from core import host
 from core.errors import MMPError
 
-if TYPE_CHECKING:  # pragma: no cover
-    from playwright.sync_api import BrowserContext
+# OpenCLI npm package used at v0.3.1 release. Pinning lets us evolve the
+# backend without breaking users; bump in tandem with provider updates.
+_OPENCLI_PKG = "@jackwener/opencli"
 
 
 class BrowserNotInstalledError(MMPError):
-    """Playwright is not importable. Most likely user hasn't installed
-    the optional ``browser`` extra and/or hasn't run
-    ``playwright install chromium``."""
+    """OpenCLI binary not callable. Install Node.js >= 21 and retry."""
 
 
-class BrowserStateMissingError(MMPError):
-    """No saved login state for the requested provider. User should run
-    ``mmp browser login <provider>`` first."""
+class BrowserNotConnectedError(MMPError):
+    """OpenCLI reports the Chrome extension is not connected."""
 
 
-def _state_dir() -> Path:
-    return host.user_data_dir() / "browser-state"
+class BrowserCommandError(MMPError):
+    """An opencli browser subcommand failed unexpectedly."""
 
 
-def state_path(provider: str) -> Path:
-    return _state_dir() / f"{provider}.json"
+def _opencli_argv() -> list[str]:
+    """Return the argv prefix that invokes opencli.
+
+    Prefer a globally-installed ``opencli`` binary; fall back to ``npx``
+    against the pinned package. ``npx`` adds ~3-4s to first call (cache
+    warm-up) but works without a global install.
+    """
+    if shutil.which("opencli"):
+        return ["opencli"]
+    if shutil.which("npx"):
+        return ["npx", "-y", _OPENCLI_PKG]
+    raise BrowserNotInstalledError(
+        "neither `opencli` nor `npx` is on PATH. Install Node.js >= 21:\n"
+        "  brew install node          # macOS\n"
+        "  apt install nodejs npm     # ubuntu\n"
+        "Then mmp will use `npx @jackwener/opencli ...` automatically."
+    )
 
 
-def state_exists(provider: str) -> bool:
-    return state_path(provider).exists()
+def _run(args: list[str], *, check: bool = True, timeout: float = 120.0) -> dict[str, Any]:
+    """Invoke ``opencli browser <args>`` and return parsed JSON output.
 
-
-def _import_playwright() -> Any:
+    OpenCLI commands emit JSON envelopes on stdout when they succeed.
+    Diagnostic / status messages go to stderr. We surface stderr in
+    raised errors so callers see what went wrong.
+    """
+    argv = _opencli_argv() + ["browser"] + args
     try:
-        from playwright.sync_api import sync_playwright
-    except ImportError as e:  # pragma: no cover
-        raise BrowserNotInstalledError(
-            "playwright is not installed. To enable browser-based providers:\n"
-            '  pip install -e ".[browser]"\n'
-            "  playwright install chromium"
-        ) from e
-    return sync_playwright
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except FileNotFoundError as e:  # pragma: no cover
+        raise BrowserNotInstalledError(str(e)) from e
 
+    stderr = (proc.stderr or "").strip()
+    stdout = (proc.stdout or "").strip()
 
-@contextmanager
-def browser_context(
-    provider: str,
-    *,
-    headless: bool = True,
-    require_state: bool = True,
-    user_agent: str | None = None,
-) -> Iterator[BrowserContext]:
-    """Open a Chromium ``BrowserContext`` for ``provider``.
-
-    Loads saved storage state if present. If ``require_state`` is True
-    and no state exists, raises ``BrowserStateMissingError`` with a hint.
-
-    Yields the BrowserContext. The browser process is closed on exit
-    even if the caller raises.
-    """
-    # Fail-fast on missing state before paying the playwright import cost.
-    state_p = state_path(provider)
-    if require_state and not state_p.exists():
-        raise BrowserStateMissingError(
-            f"no saved browser state for {provider!r} at {state_p}.\n"
-            f"Run `mmp browser login {provider}` once to capture a session."
-        )
-
-    sp = _import_playwright()
-    with sp() as p:
-        browser = p.chromium.launch(headless=headless)
-        try:
-            ctx_kwargs: dict[str, Any] = {}
-            if state_p.exists():
-                ctx_kwargs["storage_state"] = str(state_p)
-            if user_agent:
-                ctx_kwargs["user_agent"] = user_agent
-            ctx = browser.new_context(**ctx_kwargs)
-            try:
-                yield ctx
-            finally:
-                ctx.close()
-        finally:
-            browser.close()
-
-
-def save_state(ctx: BrowserContext, provider: str) -> Path:
-    """Persist ``ctx``'s cookies and localStorage for later headless use.
-
-    Chmod 600. Caller is responsible for not sharing the file.
-    """
-    p = state_path(provider)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    ctx.storage_state(path=str(p))
-    os.chmod(p, 0o600)
-    return p
-
-
-def login_interactive(
-    provider: str,
-    login_url: str,
-    confirmation_prompt: str | None = None,
-) -> Path:
-    """Open a headed browser at ``login_url`` so the user can log in.
-
-    After the user logs in, they press Enter on the CLI to confirm,
-    and we persist storage state. Returns the path the state was saved to.
-
-    ``confirmation_prompt`` overrides the default prompt — useful when a
-    provider needs the user to do something extra (e.g. accept a TOS).
-
-    Raises ``BrowserNotInstalledError`` if Playwright isn't available.
-    """
-    sp = _import_playwright()
-    with sp() as p:
-        browser = p.chromium.launch(headless=False)
-        try:
-            ctx = browser.new_context()
-            page = ctx.new_page()
-            page.goto(login_url)
-            print()
-            print(f"[mmp browser login] Opened {login_url} in a browser.")
-            print(
-                "Log in normally. When you're on a logged-in page (the home "
-                "feed, dashboard, etc), come back here and press Enter."
+    if proc.returncode != 0:
+        if "extension not connected" in stderr.lower():
+            raise BrowserNotConnectedError(
+                "OpenCLI Browser Bridge extension is not connected.\n"
+                "1. Install: https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk\n"
+                "2. Make sure Chrome is open and the extension is enabled\n"
+                "3. Try: `npx @jackwener/opencli doctor`"
             )
-            prompt = confirmation_prompt or "> Press Enter when logged in: "
-            input(prompt)
-            saved = save_state(ctx, provider)
-            ctx.close()
-        finally:
-            browser.close()
-    print(f"\n✓ Saved browser state for {provider!r} to {saved}")
-    return saved
+        if check:
+            raise BrowserCommandError(
+                f"opencli browser {' '.join(args)} failed (exit {proc.returncode})\n"
+                f"stderr: {stderr}\n"
+                f"stdout: {stdout[:500]}"
+            )
+
+    if not stdout:
+        return {}
+    try:
+        return json.loads(stdout)
+    except json.JSONDecodeError:
+        # Some commands (state, extract) emit non-JSON; return as text.
+        return {"_raw": stdout}
 
 
-def delete_state(provider: str) -> bool:
-    """Remove saved state for ``provider``. Returns True if removed."""
-    p = state_path(provider)
-    if p.exists():
-        p.unlink()
+# ---------------------------------------------------------------------------
+# Public API — primitive wrappers
+# ---------------------------------------------------------------------------
+
+
+def doctor() -> dict[str, Any]:
+    """Run ``opencli doctor`` and return its diagnostic output.
+
+    Useful when ``mmp browser status`` is called: surfaces extension
+    connectivity, daemon status, Chrome detection, etc.
+    """
+    argv = _opencli_argv() + ["doctor"]
+    proc = subprocess.run(argv, capture_output=True, text=True, timeout=30)
+    return {
+        "ok": proc.returncode == 0,
+        "stdout": proc.stdout,
+        "stderr": proc.stderr,
+    }
+
+
+def state(tab: str | None = None) -> dict[str, Any]:
+    """Return current page URL, title, and interactive-element refs.
+
+    NOTE: opencli's ``browser state`` emits text (not JSON), so the
+    returned dict will be ``{"_raw": "<text>"}``. For structured access,
+    prefer ``get_url()`` and ``get_title()`` below.
+    """
+    args = ["state"]
+    if tab:
+        args += ["--tab", tab]
+    return _run(args)
+
+
+def get_url(tab: str | None = None) -> str:
+    """Return the plain URL of the active automation tab."""
+    args = ["get", "url"]
+    if tab:
+        args += ["--tab", tab]
+    raw = _run(args)
+    # `browser get url` returns the URL on stdout; _run wraps non-JSON
+    # output as {"_raw": "..."}. Strip whitespace.
+    if "_raw" in raw:
+        return str(raw["_raw"]).strip()
+    if "value" in raw:
+        return str(raw["value"]).strip()
+    return ""
+
+
+def get_title(tab: str | None = None) -> str:
+    """Return the page title."""
+    args = ["get", "title"]
+    if tab:
+        args += ["--tab", tab]
+    raw = _run(args)
+    if "_raw" in raw:
+        return str(raw["_raw"]).strip()
+    if "value" in raw:
+        return str(raw["value"]).strip()
+    return ""
+
+
+def open_url(url: str) -> dict[str, Any]:
+    """Open ``url`` in the automation window. Returns the tab target id."""
+    return _run(["open", url])
+
+
+def click(target: str, tab: str | None = None) -> dict[str, Any]:
+    """Click element by numeric ref or CSS selector."""
+    args = ["click", target]
+    if tab:
+        args += ["--tab", tab]
+    return _run(args)
+
+
+def type_text(target: str, text: str, tab: str | None = None) -> dict[str, Any]:
+    """Click ``target`` and type ``text`` into it."""
+    args = ["type", target, text]
+    if tab:
+        args += ["--tab", tab]
+    return _run(args)
+
+
+def wait(kind: str, value: str | None = None, tab: str | None = None) -> dict[str, Any]:
+    """Wait for a condition. ``kind`` is selector/text/time/xhr."""
+    args = ["wait", kind]
+    if value is not None:
+        args.append(value)
+    if tab:
+        args += ["--tab", tab]
+    return _run(args)
+
+
+def evaluate(js: str, tab: str | None = None) -> dict[str, Any]:
+    """Run JS in page context, return result envelope."""
+    args = ["eval", js]
+    if tab:
+        args += ["--tab", tab]
+    return _run(args)
+
+
+def screenshot(path: str, tab: str | None = None) -> dict[str, Any]:
+    """Capture a screenshot to ``path``."""
+    args = ["screenshot", path]
+    if tab:
+        args += ["--tab", tab]
+    return _run(args)
+
+
+def find(selector: str, tab: str | None = None) -> dict[str, Any]:
+    """Find DOM elements matching CSS ``selector``."""
+    args = ["find", "--selector", selector]
+    if tab:
+        args += ["--tab", tab]
+    return _run(args)
+
+
+def is_connected() -> bool:
+    """Quick health check — True iff opencli + extension are responsive."""
+    try:
+        state()
         return True
-    return False
+    except (BrowserNotInstalledError, BrowserNotConnectedError):
+        return False
+    except BrowserCommandError:
+        return False

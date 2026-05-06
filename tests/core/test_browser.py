@@ -1,8 +1,8 @@
-"""Unit tests for core.browser.
+"""Unit tests for core.browser (OpenCLI-backed).
 
-These tests do NOT require playwright to be installed. Tests that exercise
-real browser behavior live in providers/<name>/tests/ and are gated on
-playwright being importable + a valid login state.
+We mock subprocess.run so tests don't require opencli or a Chrome
+extension to be installed. Real-browser tests (that actually drive
+Chrome) live in providers/<name>/tests/ behind feature flags.
 """
 
 from __future__ import annotations
@@ -12,98 +12,174 @@ from unittest.mock import patch
 
 import pytest
 
-from core import browser
+from core import browser as br
 from core.browser import (
+    BrowserCommandError,
+    BrowserNotConnectedError,
     BrowserNotInstalledError,
-    BrowserStateMissingError,
-    delete_state,
-    state_exists,
-    state_path,
+    is_connected,
+    open_url,
+    state,
 )
 
 
-@pytest.fixture
-def isolated(monkeypatch, tmp_path):
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    return tmp_path
+def _mock_run(stdout: str = "", stderr: str = "", returncode: int = 0):
+    """Returns a CompletedProcess-shaped object for subprocess.run mocks."""
+
+    class _CP:
+        def __init__(self) -> None:
+            self.stdout = stdout
+            self.stderr = stderr
+            self.returncode = returncode
+
+    return _CP()
 
 
-def test_state_path_under_user_data_dir(isolated):
-    p = state_path("x-article")
-    assert p == isolated / ".config" / "mmp" / "browser-state" / "x-article.json"
-
-
-def test_state_exists_false_initially(isolated):
-    assert state_exists("x-article") is False
-
-
-def test_state_exists_true_after_create(isolated):
-    p = state_path("x-article")
-    p.parent.mkdir(parents=True)
-    p.write_text("{}")
-    assert state_exists("x-article") is True
-
-
-def test_delete_state_removes_file(isolated):
-    p = state_path("x-article")
-    p.parent.mkdir(parents=True)
-    p.write_text("{}")
-    assert delete_state("x-article") is True
-    assert not p.exists()
-
-
-def test_delete_state_no_op_when_missing(isolated):
-    assert delete_state("x-article") is False
-
-
-def test_browser_context_missing_state_raises(isolated):
-    """Without saved state, browser_context should refuse rather than
-    silently launch a fresh (logged-out) browser."""
-    with pytest.raises(BrowserStateMissingError, match="x-article"):
-        with browser.browser_context("x-article", require_state=True):
-            pass
-
-
-def test_browser_context_playwright_missing_raises_install_hint(isolated):
-    """If playwright isn't importable, surface BrowserNotInstalledError
-    with the install command in the message."""
-    # Pretend playwright import fails
-    with patch("core.browser._import_playwright") as mock_import:
-        mock_import.side_effect = BrowserNotInstalledError(
-            "playwright is not installed. To enable browser-based providers:\n"
-            '  pip install -e ".[browser]"\n'
-            "  playwright install chromium"
+def test_state_returns_parsed_json():
+    """`browser state` emits JSON; we parse and return as dict."""
+    with (
+        patch("core.browser.shutil.which", return_value="/usr/bin/opencli"),
+        patch("core.browser.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = _mock_run(
+            stdout=json.dumps({"url": "https://x.com", "title": "X"}),
+            returncode=0,
         )
-        with pytest.raises(BrowserNotInstalledError, match="playwright install"):
-            with browser.browser_context("x-article", require_state=False):
-                pass
+        result = state()
+        assert result == {"url": "https://x.com", "title": "X"}
 
 
-def test_save_state_writes_chmod_600(isolated):
-    """save_state should chmod the file 600 (sensitive: cookies)."""
-    import os
-
-    # Build a fake BrowserContext that just dumps to the requested path
-    class _FakeCtx:
-        def storage_state(self, path: str) -> None:
-            with open(path, "w") as f:
-                json.dump({"cookies": [], "origins": []}, f)
-
-    p = browser.save_state(_FakeCtx(), "x-article")
-    assert p.exists()
-    mode = oct(p.stat().st_mode)[-3:]
-    assert mode == "600"
-
-    # And the content round-trips
-    data = json.loads(p.read_text())
-    assert "cookies" in data
-    # Cleanup permissions check
-    os.chmod(p, 0o600)
+def test_state_falls_back_to_npx_when_opencli_missing():
+    """If `opencli` not on PATH, use `npx -y @jackwener/opencli`."""
+    with (
+        patch(
+            "core.browser.shutil.which",
+            side_effect=lambda c: "/usr/bin/npx" if c == "npx" else None,
+        ),
+        patch("core.browser.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = _mock_run(stdout="{}", returncode=0)
+        state()
+        argv = mock_run.call_args[0][0]
+        assert argv[0] == "npx"
+        assert "-y" in argv
+        assert "@jackwener/opencli" in argv
+        assert "browser" in argv
+        assert "state" in argv
 
 
-def test_state_path_separate_per_provider(isolated):
-    a = state_path("x-article")
-    b = state_path("substack")
-    assert a != b
-    assert a.parent == b.parent
+def test_no_opencli_no_npx_raises_install_hint():
+    with patch("core.browser.shutil.which", return_value=None):
+        with pytest.raises(BrowserNotInstalledError, match="Node.js"):
+            state()
+
+
+def test_extension_not_connected_raises_specific_error():
+    """When opencli reports `extension not connected`, raise the typed
+    BrowserNotConnectedError with the install link."""
+    with (
+        patch("core.browser.shutil.which", return_value="/usr/bin/opencli"),
+        patch("core.browser.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = _mock_run(
+            stdout="",
+            stderr="✖  Browser Bridge extension not connected",
+            returncode=1,
+        )
+        with pytest.raises(BrowserNotConnectedError, match="not connected"):
+            state()
+
+
+def test_other_failure_raises_command_error():
+    with (
+        patch("core.browser.shutil.which", return_value="/usr/bin/opencli"),
+        patch("core.browser.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = _mock_run(
+            stdout="",
+            stderr="some other error",
+            returncode=2,
+        )
+        with pytest.raises(BrowserCommandError, match="exit 2"):
+            state()
+
+
+def test_open_url_invocation():
+    with (
+        patch("core.browser.shutil.which", return_value="/usr/bin/opencli"),
+        patch("core.browser.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = _mock_run(
+            stdout=json.dumps({"target": "tab-1"}),
+            returncode=0,
+        )
+        result = open_url("https://example.com")
+        argv = mock_run.call_args[0][0]
+        assert argv[-2:] == ["open", "https://example.com"]
+        assert result == {"target": "tab-1"}
+
+
+def test_type_text_argv():
+    """`browser type <target> <text>` should pass exactly two trailing args."""
+    with (
+        patch("core.browser.shutil.which", return_value="/usr/bin/opencli"),
+        patch("core.browser.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = _mock_run(stdout="{}", returncode=0)
+        br.type_text("[1]", "hello world")
+        argv = mock_run.call_args[0][0]
+        assert "type" in argv
+        assert "[1]" in argv
+        assert "hello world" in argv
+
+
+def test_is_connected_true_when_state_succeeds():
+    with (
+        patch("core.browser.shutil.which", return_value="/usr/bin/opencli"),
+        patch("core.browser.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = _mock_run(stdout="{}", returncode=0)
+        assert is_connected() is True
+
+
+def test_is_connected_false_when_extension_not_connected():
+    with (
+        patch("core.browser.shutil.which", return_value="/usr/bin/opencli"),
+        patch("core.browser.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = _mock_run(
+            stderr="✖  Browser Bridge extension not connected",
+            returncode=1,
+        )
+        assert is_connected() is False
+
+
+def test_is_connected_false_when_no_opencli():
+    with patch("core.browser.shutil.which", return_value=None):
+        assert is_connected() is False
+
+
+def test_tab_arg_threads_through():
+    with (
+        patch("core.browser.shutil.which", return_value="/usr/bin/opencli"),
+        patch("core.browser.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = _mock_run(stdout="{}", returncode=0)
+        state(tab="abc-123")
+        argv = mock_run.call_args[0][0]
+        assert "--tab" in argv
+        assert "abc-123" in argv
+
+
+def test_non_json_stdout_returned_as_raw():
+    """`extract` and similar emit non-JSON; should return {'_raw': ...}."""
+    with (
+        patch("core.browser.shutil.which", return_value="/usr/bin/opencli"),
+        patch("core.browser.subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = _mock_run(
+            stdout="some plain text output\nmultiple lines",
+            returncode=0,
+        )
+        result = state()
+        assert result["_raw"] == "some plain text output\nmultiple lines"
