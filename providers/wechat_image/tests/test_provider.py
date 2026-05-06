@@ -1,4 +1,5 @@
 import json
+from unittest.mock import patch
 
 import pytest
 
@@ -36,22 +37,10 @@ def test_prepare_writes_payload(img_manifest, tmp_path):
     payload = json.loads(out.payload_path.read_text())
     assert payload["title"] == "短"
     assert payload["caption"] == "caption text"
+    assert payload["images"] == [str(tmp_path / "01.png")]
 
 
-def test_execute_draft_writes_browser_flow_guide(img_manifest, tmp_path):
-    run_dir = tmp_path / "run"
-    (run_dir / "packs" / "wechat-image").mkdir(parents=True)
-    p = WeChatImageProvider()
-    p.prepare(img_manifest, img_manifest.targets[0], run_dir)
-    res = p.execute(run_dir, img_manifest.targets[0], mode="draft", credentials={})
-    guide = run_dir / "packs" / "wechat-image" / "browser-flow.md"
-    assert guide.exists()
-    assert "mp.weixin.qq.com" in guide.read_text()
-    assert res.status == "ok"
-    assert res.mode_actual == "draft-local"
-
-
-def test_execute_dry_run_skips_guide(img_manifest, tmp_path):
+def test_execute_dry_run_skips_browser(img_manifest, tmp_path):
     run_dir = tmp_path / "run"
     (run_dir / "packs" / "wechat-image").mkdir(parents=True)
     p = WeChatImageProvider()
@@ -67,3 +56,61 @@ def test_execute_publish_refused(img_manifest, tmp_path):
     p.prepare(img_manifest, img_manifest.targets[0], run_dir)
     with pytest.raises(NotImplementedError, match="publish"):
         p.execute(run_dir, img_manifest.targets[0], mode="publish", credentials={})
+
+
+def test_execute_draft_stub_when_bridge_disconnected(img_manifest, tmp_path):
+    """No bridge → stub mode, write TODO-connector.md, no exception."""
+    run_dir = tmp_path / "run"
+    pack_dir = run_dir / "packs" / "wechat-image"
+    pack_dir.mkdir(parents=True)
+    p = WeChatImageProvider()
+    p.prepare(img_manifest, img_manifest.targets[0], run_dir)
+
+    with patch("core.browser.is_connected", return_value=False):
+        res = p.execute(run_dir, img_manifest.targets[0], mode="draft", credentials={})
+
+    assert res.status == "ok"
+    assert res.mode_actual == "stub"
+    assert res.extras["connector_status"] == "bridge-not-connected"
+    todo = pack_dir / "TODO-connector.md"
+    assert todo.exists()
+    assert "贴图" in todo.read_text()
+
+
+def test_execute_draft_invokes_browser_flow(img_manifest, tmp_path):
+    """Bridge connected → call browser_flow.create_draft, surface results."""
+    run_dir = tmp_path / "run"
+    (run_dir / "packs" / "wechat-image").mkdir(parents=True)
+    p = WeChatImageProvider()
+    p.prepare(img_manifest, img_manifest.targets[0], run_dir)
+
+    with (
+        patch("core.browser.is_connected", return_value=True),
+        patch(
+            "providers.wechat_image.internal.browser_flow.create_draft",
+            return_value={
+                "draft_url": "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42",
+                "external_id": "42",
+            },
+        ),
+    ):
+        res = p.execute(run_dir, img_manifest.targets[0], mode="draft", credentials={})
+
+    assert res.status == "ok"
+    assert res.mode_actual == "draft-platform"
+    assert res.external_id == "42"
+    assert res.draft_url and "appmsgid=42" in res.draft_url
+    assert res.extras["connector_status"] == "browser-ok"
+
+
+def test_health_check_reflects_bridge():
+    p = WeChatImageProvider()
+    with patch("core.browser.is_connected", return_value=False):
+        assert p.health_check({}).value == "failed"
+    with patch("core.browser.is_connected", return_value=True):
+        assert p.health_check({}).value == "ok"
+
+
+def test_browser_login_url_set():
+    p = WeChatImageProvider()
+    assert p.browser_login_url == "https://mp.weixin.qq.com/"

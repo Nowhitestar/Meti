@@ -1,8 +1,23 @@
-"""WeChat 图文内容 provider — emits a browser-flow guide for the user.
+"""WeChat 贴图 (image post, ``type=77``) provider — OpenCLI Browser Bridge.
 
-The browser path to mp.weixin.qq.com is currently blocked under OpenClaw policy,
-so this provider does NOT automate the upload. Instead, it produces a
-step-by-step Markdown guide the user follows in their own browser.
+Drives the user's real Chrome (where they're logged into mp.weixin.qq.com)
+to create a 贴图 draft. The 贴图 type is web-only — the public Open
+Platform API exposes only article (图文) drafts which the
+``wechat-article`` provider already covers. See
+``docs/wechat-image-tietu-research.md`` for the reverse-engineering
+notes that informed this implementation.
+
+Two execute paths:
+
+- **Browser flow** (preferred, v0.3.2+): if the OpenCLI Bridge is
+  connected, opens the 贴图 editor on mp.weixin.qq.com, injects each
+  image via the ``DataTransfer`` trick, types title + caption, then
+  clicks the editor's own "保存为草稿" button. Returns
+  ``mode_actual="draft-platform"`` with the numeric ``appmsgid`` as
+  ``external_id``.
+- **Stub fallback**: if the bridge isn't connected, writes a
+  ``TODO-connector.md`` to the pack dir with manual setup steps and
+  returns ``mode_actual="stub"``.
 """
 
 from __future__ import annotations
@@ -11,7 +26,9 @@ import json
 from pathlib import Path
 from typing import Any
 
+from core.errors import ProviderExecutionError
 from core.provider import (
+    CredentialSpec,
     ExecutionResult,
     HealthStatus,
     PreparedPayload,
@@ -20,48 +37,17 @@ from core.provider import (
 )
 from providers.wechat_image.rules import WECHAT_IMAGE_RULES
 
-_GUIDE_TEMPLATE = """\
-# WeChat 图文内容 — 手动执行指南
-
-> 自动化未启用：浏览器对 mp.weixin.qq.com 的访问被策略阻止。请按下面的步骤手动完成。
-
-## Payload
-
-文件：`{payload_path}`
-
-字段：
-
-- **标题**：`{title}`
-- **正文**：见 `content.md`
-- **图片**（{n_images} 张）：
-{image_list}
-- **CTA**：{cta}
-
-## 操作步骤
-
-1. 打开 https://mp.weixin.qq.com/ 并登录目标公众号。
-2. 顶部菜单选择 **图文素材** → **新建图文素材**（图文内容）。
-3. 填入标题、摘要（如有）。
-4. 把上面列出的每张图片按顺序上传。
-5. 把 `content.md` 内容粘贴到正文。
-6. 点击 **保存草稿**。**不要点发布**。
-7. 回到这里继续后续动作或确认草稿状态。
-
-## 安全提示
-
-- 不要绕过登录或验证码。
-- 不要导出 cookie 文件到任何外部位置。
-- 草稿确认后，如需公开发布，使用公众号原生的"群发"功能。
-"""
-
 
 class WeChatImageProvider(Provider):
     name = "wechat-image"
-    display_name = "微信图文内容"
+    display_name = "微信贴图"
     media_types = ["image-post"]
     capabilities = {"draft": True, "publish": False, "schedule": False}
-    required_credentials = []
+    # Browser-flow provider: no API credentials. Auth is via the user's
+    # logged-in Chrome session (driven via OpenCLI Browser Bridge).
+    required_credentials: list[CredentialSpec] = []
     platform_rules = WECHAT_IMAGE_RULES
+    browser_login_url = "https://mp.weixin.qq.com/"
 
     def validate(self, manifest: Any, target: Any) -> ValidationResult:
         return ValidationResult(violations=self.platform_rules.lint(manifest, self.name))
@@ -90,30 +76,91 @@ class WeChatImageProvider(Provider):
         credentials: dict[str, str],
     ) -> ExecutionResult:
         if mode == "publish":
-            raise NotImplementedError("wechat-image publish path not supported in v0.2")
+            raise NotImplementedError("wechat-image publish path not enabled in v0.3")
         if mode == "dry-run":
             return ExecutionResult(status="ok", mode_actual="dry-run", external_id=None)
 
-        # mode == draft → write a browser-flow guide
+        from core import browser as br
+
         pack_dir = run_dir / "packs" / self.name
         payload_path = pack_dir / "payload.json"
         payload = json.loads(payload_path.read_text(encoding="utf-8"))
-        image_list = "\n".join(f"   - `{img}`" for img in payload["images"]) or "   - (none)"
-        guide = _GUIDE_TEMPLATE.format(
-            payload_path=str(payload_path),
-            title=payload["title"],
-            n_images=len(payload["images"]),
-            image_list=image_list,
-            cta=payload.get("cta") or "(none)",
-        )
-        guide_path = pack_dir / "browser-flow.md"
-        guide_path.write_text(guide, encoding="utf-8")
+
+        if not br.is_connected():
+            self._write_stub(pack_dir, reason="bridge-not-connected")
+            return ExecutionResult(
+                status="ok",
+                mode_actual="stub",
+                external_id=None,
+                extras={
+                    "connector_status": "bridge-not-connected",
+                    "remediation": (
+                        "install OpenCLI Chrome extension + open Chrome; "
+                        "see docs/browser-connectors.md"
+                    ),
+                },
+            )
+
+        from providers.wechat_image.internal.browser_flow import create_draft
+
+        try:
+            result = create_draft(payload)
+        except br.BrowserNotConnectedError as exc:
+            self._write_stub(pack_dir, reason="bridge-not-connected")
+            raise ProviderExecutionError(
+                target=self.name,
+                step="browser_bridge",
+                upstream=exc,
+                retryable=True,
+            ) from exc
+        except br.BrowserNotInstalledError as exc:
+            self._write_stub(pack_dir, reason="opencli-not-installed")
+            raise ProviderExecutionError(
+                target=self.name,
+                step="browser_bridge",
+                upstream=exc,
+                retryable=False,
+            ) from exc
+        except Exception as exc:
+            raise ProviderExecutionError(
+                target=self.name,
+                step="browser_draft",
+                upstream=exc,
+                retryable=True,
+            ) from exc
+
         return ExecutionResult(
             status="ok",
-            mode_actual="draft-local",
-            external_id=None,
-            extras={"guide_path": str(guide_path)},
+            mode_actual="draft-platform",
+            external_id=result.get("external_id"),
+            draft_url=result.get("draft_url"),
+            extras={"connector_status": "browser-ok"},
         )
 
     def health_check(self, credentials: dict[str, str]) -> HealthStatus:
-        return HealthStatus.unknown
+        from core import browser as br
+
+        return HealthStatus.ok if br.is_connected() else HealthStatus.failed
+
+    @staticmethod
+    def _write_stub(pack_dir: Path, *, reason: str) -> None:
+        (pack_dir / "TODO-connector.md").write_text(
+            f"# wechat-image (贴图) browser connector skipped (reason: {reason})\n\n"
+            "Payload is ready at `payload.json`. To complete the draft:\n\n"
+            "**Option A (recommended): set up the OpenCLI Browser Bridge**\n\n"
+            "1. Install Node.js 21+: `brew install node` (macOS)\n"
+            "2. Install the Chrome extension:\n"
+            "   https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk\n"
+            "3. Make sure you're logged in to mp.weixin.qq.com in Chrome\n"
+            "4. Verify: `mmp browser status`\n"
+            "5. Retry: `mmp resume <this-run-dir>`\n\n"
+            "Setup details: docs/browser-connectors.md\n\n"
+            "**Option B: manually create the draft**\n\n"
+            "1. Open https://mp.weixin.qq.com/ in your logged-in Chrome\n"
+            "2. Top-right → 新的创作 → 贴图\n"
+            "3. Upload images from payload.json (in order)\n"
+            "4. Paste title from payload.title\n"
+            "5. Paste caption from content.md\n"
+            "6. 保存为草稿\n",
+            encoding="utf-8",
+        )
