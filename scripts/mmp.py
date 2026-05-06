@@ -179,10 +179,14 @@ def cmd_publish(args: argparse.Namespace) -> int:
                 provider.prepare(m, t, run.dir)
                 run.log("PREPARE_OK", target=t.name)
 
-                creds = {}
+                creds: dict[str, str] = {}
                 if t.mode != "dry-run":
                     required = [c.key for c in provider.required_credentials]
-                    creds = store.get(t.name, t.account, required_keys=required)
+                    if required:
+                        # Only consult the vault when the provider actually needs creds.
+                        # Providers with empty required_credentials (e.g. local-only flows)
+                        # get an empty creds dict.
+                        creds = store.get(t.name, t.account, required_keys=required)
 
                 exec_res = provider.execute(run.dir, t, t.mode, creds)
                 run.add_target_result(

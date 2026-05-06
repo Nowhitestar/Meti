@@ -75,18 +75,59 @@ def test_execute_draft_invokes_local_script(img_manifest, tmp_path):
 
     with patch(
         "providers.xiaohongshu.provider._invoke_local_draft",
-        return_value={"draft_id": "xhs_local_abc"},
+        return_value={"draft_id": "20260506-foo", "draft_path": "/tmp/foo.json"},
     ) as mock:
+        # No credentials needed for local-draft mode in v0.2.
         res = p.execute(
             run_dir,
             img_manifest.targets[0],
             mode="draft",
-            credentials={"XHS_COOKIE_PATH": "/tmp/x"},
+            credentials={},
         )
     mock.assert_called_once()
     assert res.status == "ok"
     assert res.mode_actual == "draft-local"
-    assert res.external_id == "xhs_local_abc"
+    assert res.external_id == "20260506-foo"
+    assert res.extras["draft_path"] == "/tmp/foo.json"
+
+
+def test_execute_draft_passes_payload_dict(img_manifest, tmp_path):
+    """_invoke_local_draft receives the loaded payload dict, not a path."""
+    run_dir = tmp_path / "run"
+    (run_dir / "packs" / "xiaohongshu").mkdir(parents=True)
+    p = XiaohongshuProvider()
+    p.prepare(img_manifest, img_manifest.targets[0], run_dir)
+
+    with patch(
+        "providers.xiaohongshu.provider._invoke_local_draft",
+        return_value={"draft_id": "x", "draft_path": "/tmp/x.json"},
+    ) as mock:
+        p.execute(run_dir, img_manifest.targets[0], mode="draft", credentials={})
+
+    args, _ = mock.call_args
+    payload_arg = args[0]
+    assert isinstance(payload_arg, dict)
+    assert payload_arg["title"] == "短标题"
+    assert payload_arg["caption"] == "这是一段不超过 1000 字的图文 caption。"
+
+
+def test_build_xhs_payload_reshapes_for_draft_sh():
+    """Internal: payload reshape matches draft.sh's expected JSON shape."""
+    from providers.xiaohongshu.provider import _build_xhs_payload
+
+    out = _build_xhs_payload({
+        "title": "T",
+        "caption": "C",
+        "images": ["/abs/a.png"],
+        "tags": ["x"],
+        "extra_unused": "ignored",
+    })
+    assert out == {
+        "title": "T",
+        "content": "C",  # caption -> content
+        "images": ["/abs/a.png"],
+        "tags": ["x"],
+    }
 
 
 def test_execute_publish_refused(img_manifest, tmp_path):
@@ -99,5 +140,5 @@ def test_execute_publish_refused(img_manifest, tmp_path):
             run_dir,
             img_manifest.targets[0],
             mode="publish",
-            credentials={"XHS_COOKIE_PATH": "x"},
+            credentials={},
         )
