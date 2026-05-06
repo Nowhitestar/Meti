@@ -67,6 +67,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
     from core.errors import MMPError
     from core.manifest import load_manifest
     from core.provider import ProviderRegistry
+    from core.rules import Severity, Violation
 
     try:
         m = load_manifest(args.manifest)
@@ -75,6 +76,24 @@ def cmd_validate(args: argparse.Namespace) -> int:
         all_violations = []
         for t in m.targets:
             provider = reg.resolve(t.name)
+            # Capability gate: target.mode must be supported by provider
+            cap_key = "publish" if t.mode == "publish" else (
+                "draft" if t.mode == "draft" else None
+            )
+            if cap_key and not provider.capabilities.get(cap_key, False):
+                all_violations.append(
+                    Violation(
+                        code="MODE_NOT_SUPPORTED",
+                        message=(
+                            f"provider does not support mode={t.mode} "
+                            f"(caps={provider.capabilities})"
+                        ),
+                        severity=Severity.error,
+                        target=t.name,
+                        field_path="targets[].mode",
+                    )
+                )
+                continue
             res = provider.validate(m, t)
             if res:
                 all_violations.extend(res.violations)
@@ -128,6 +147,19 @@ def cmd_publish(args: argparse.Namespace) -> int:
             run.log("TARGET_START", target=t.name, account=t.account)
             try:
                 provider = reg.resolve(t.name)
+                cap_key = "publish" if t.mode == "publish" else (
+                    "draft" if t.mode == "draft" else None
+                )
+                if cap_key and not provider.capabilities.get(cap_key, False):
+                    run.add_target_result(
+                        name=t.name,
+                        account=t.account,
+                        status="failed",
+                        mode_actual="dry-run",
+                        error=f"capability: provider does not support mode={t.mode}",
+                    )
+                    run.log("CAPABILITY_FAIL", target=t.name, mode=t.mode)
+                    continue
                 v_res = provider.validate(m, t)
                 errs = [
                     v for v in (v_res.violations if v_res else []) if v.severity.value == "error"
