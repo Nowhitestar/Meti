@@ -128,11 +128,13 @@ def test_create_draft_happy_path(fake_image):
                     },
                 }
             ),
-            # 3. _JS_FOCUS_BODY
+            # 3. _js_set_title
+            _eval_envelope({"ok": True, "value": "test title", "fallback": False}),
+            # 4. _JS_FOCUS_BODY
             _eval_envelope({"focused": True, "currentText": ""}),
-            # 4. _js_dispatch_text
+            # 5. _js_dispatch_text
             _eval_envelope({"inserted": True, "via": "execCommand"}),
-            # 5. _JS_CLICK_SAVE
+            # 6. _JS_CLICK_SAVE
             _eval_envelope({"clicked": True}),
         ]
     )
@@ -143,7 +145,6 @@ def test_create_draft_happy_path(fake_image):
             "core.browser.get_url",
             side_effect=[home, editor_after_alloc, final_url],
         ),
-        patch("core.browser.type_text"),
         patch("core.browser.evaluate", side_effect=lambda *_a, **_k: next(eval_returns)),
         patch("time.sleep"),  # skip waits
     ):

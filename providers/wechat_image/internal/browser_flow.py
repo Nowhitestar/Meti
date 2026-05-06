@@ -59,10 +59,16 @@ TOKEN_RE = re.compile(r"[?&]token=(\d+)")
 # MP rewrites the URL once a fresh draft has been allocated.
 APPMSGID_RE = re.compile(r"[?&]appmsgid=(\d+)")
 
-# 贴图 = type=77. We pin `t=media/appmsg_edit` to mirror MP's own routing.
+# Fresh-draft creation URL for 贴图. Confirmed empirically by clicking
+# "新的创作 → 贴图" in MP's Creator UI: MP routes to ``appmsg_edit_v2``
+# with ``type=10&createType=8&isNew=1``. (Note: ``type=77`` only
+# indexes the 贴图 list view; draft creation uses ``type=10``
+# disambiguated by ``createType=8``.) MP allocates the appmsgid on the
+# first save and rewrites the URL.
 EDITOR_URL_TPL = (
     "https://mp.weixin.qq.com/cgi-bin/appmsg"
-    "?t=media/appmsg_edit&action=add&type=77&token={token}&lang=zh_CN"
+    "?t=media/appmsg_edit_v2&action=edit&isNew=1&type=10&createType=8"
+    "&token={token}&lang=zh_CN"
 )
 
 # Selectors. Constants for easy patching when MP changes UI.
@@ -162,10 +168,22 @@ _JS_INJECT_IMAGE_TPL = """(async () => {
   const blob = new Blob([bytes], {type: payload.mime});
   const file = new File([blob], payload.name, {type: payload.mime});
 
-  // Pick the right input. Editor has 3 file inputs; we want the one
-  // accepting images. MP's image input has `accept` containing 'image'.
-  const inputs = Array.from(document.querySelectorAll('input[type=file]'));
-  const target = inputs.find(i => (i.accept || '').includes('image')) || inputs[0];
+  // Pick the right file input. The 贴图 editor contains multiple
+  // hidden `<input type=file>` elements: one is leftover from the
+  // "新的创作" dropdown menu (parent class `tpl_dropdown_menu_item`
+  // — for the regular article cover picker), the other belongs to
+  // 贴图's own webuploader. Skip the dropdown leftover.
+  const allInputs = Array.from(document.querySelectorAll('input[type=file]'));
+  const imageInputs = allInputs.filter(i => (i.accept || '').includes('image'));
+  const target = imageInputs.find(i => {
+    let p = i.parentElement;
+    while (p && p !== document.body) {
+      const c = (p.className || '').toString();
+      if (c.includes('tpl_dropdown_menu_item') || c.includes('weui-desktop-dropdown')) return false;
+      p = p.parentElement;
+    }
+    return true;
+  }) || imageInputs[imageInputs.length - 1] || allInputs[0];
   if (!target) return JSON.stringify({ok: false, error: 'no file input found'});
 
   // Hook the upload XHR before triggering, so we can deterministically
@@ -285,15 +303,19 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     for idx, image_path in enumerate(images):
         _upload_one_image(image_path, idx)
 
-    # 4. Type title.
+    # 4. Set title. We focus the textarea + use execCommand('insertText')
+    # which fires beforeinput → input events that MP's dirty-state
+    # tracker recognizes. Plain `value =` setter doesn't dirty React
+    # state on this page; opencli's `type` was also unreliable on the
+    # ``appmsg_edit_v2`` template.
     if title:
-        try:
-            br.type_text(TITLE_SELECTOR, title)
-        except Exception as e:
+        title_raw = br.evaluate(_js_set_title(title))
+        title_res = _parse_eval(title_raw)
+        if not title_res.get("ok"):
             raise RuntimeError(
-                f"贴图: title field not found ({TITLE_SELECTOR!r}). "
-                f"Update TITLE_SELECTOR in {__file__}. Original: {e}"
-            ) from e
+                f"贴图: failed to set title via {TITLE_SELECTOR!r}: "
+                f"{title_res.get('reason', title_res)}"
+            )
 
     # 5. Type caption (if any). Body is a ProseMirror; focus it via JS,
     # then use opencli's `type` to send real keystrokes that React reads.
@@ -356,21 +378,30 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
 
 
 def _parse_eval(envelope: dict[str, Any]) -> dict[str, Any]:
-    """opencli's `browser eval` returns a JSON envelope; the actual
-    return value is in `result` or `value` (varies by version) and is
-    itself a JSON-encoded string per our convention.
+    """Normalize the dict that ``core.browser.evaluate`` returns.
+
+    ``core.browser._run`` returns either:
+
+    - The parsed JSON object directly (if opencli's stdout was valid
+      JSON, which is what our ``JSON.stringify(...)`` JS produces) — in
+      this case the dict already has the JS-side fields like ``ready``,
+      ``ok``, etc.
+    - ``{"_raw": "<text>"}`` if stdout wasn't JSON-parseable. We try
+      to parse the raw text as JSON ourselves; if that also fails,
+      return the original envelope.
+
+    Critically: do NOT unwrap legitimate top-level keys like ``result``
+    or ``value`` — those are real JS return values, not envelope keys.
     """
     if not envelope:
         return {}
-    raw = envelope.get("result") or envelope.get("value") or envelope.get("_raw")
+    raw = envelope.get("_raw")
     if isinstance(raw, str):
         try:
             return json.loads(raw)  # type: ignore[no-any-return]
         except json.JSONDecodeError:
-            return {"_raw": raw}
-    if isinstance(raw, dict):
-        return raw
-    return {}
+            return envelope
+    return envelope
 
 
 def _extract_appmsgid(url: str) -> str | None:
@@ -410,6 +441,39 @@ def _upload_one_image(image_path: str, idx: int) -> None:
     # MP needs a moment to paint the uploaded image into the editor;
     # subsequent images can race if we don't pause.
     time.sleep(UPLOAD_WAIT_S * 0.5)
+
+
+def _js_set_title(text: str) -> str:
+    """JS that sets the 贴图 title textarea via ``execCommand('insertText')``.
+
+    Strategy:
+    1. Find ``textarea.js_article_title`` and focus it
+    2. Select all existing content (in case of a partial draft)
+    3. ``execCommand('insertText', text)`` — fires beforeinput/input
+       events that MP's React dirty tracker registers
+    4. Verify the textarea's ``value`` matches what we set; fall back
+       to a direct ``value`` setter + ``input``/``change`` events if
+       execCommand silently no-op'd
+    """
+    safe = json.dumps(text)
+    return f"""(() => {{
+      const text = {safe};
+      const ta = document.querySelector('textarea.js_article_title');
+      if (!ta) return JSON.stringify({{ok: false, reason: 'title textarea not found'}});
+      ta.focus();
+      ta.setSelectionRange(0, ta.value.length);
+      let usedFallback = false;
+      try {{ document.execCommand('insertText', false, text); }} catch (e) {{}}
+      if (ta.value !== text) {{
+        // Fallback for browsers/editors that ignore execCommand.
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, 'value').set;
+        setter.call(ta, text);
+        ta.dispatchEvent(new Event('input', {{bubbles: true}}));
+        ta.dispatchEvent(new Event('change', {{bubbles: true}}));
+        usedFallback = true;
+      }}
+      return JSON.stringify({{ok: ta.value === text, value: ta.value, fallback: usedFallback}});
+    }})()"""
 
 
 def _js_dispatch_text(text: str) -> str:

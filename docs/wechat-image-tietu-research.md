@@ -17,20 +17,41 @@ endpoint to create or list it. Implementation must drive the Creator
 Studio web UI like our other browser-flow providers (`x-article`,
 `substack`).
 
-## Editor URL
+## Editor URLs
+
+**Creating a fresh 贴图 draft** (confirmed via "新的创作 → 贴图"):
+
+```
+https://mp.weixin.qq.com/cgi-bin/appmsg
+  ?t=media/appmsg_edit_v2     # NB: _v2 path; the legacy `appmsg_edit` is for type=10 articles
+  &action=edit                # NOT `add` — MP uses `edit` + `isNew=1`
+  &isNew=1                    # signals "this is a new draft, allocate on save"
+  &type=10                    # type=10 (with createType=8) is how MP routes 贴图 creation
+  &createType=8               # 8 = 贴图; createType disambiguates within type=10
+  &token=<TOKEN>
+  &lang=zh_CN
+```
+
+**Important**: ``type=77`` is only used to FILTER the draft-list view
+(``?type=77&action=list_card``). Creation uses ``type=10`` +
+``createType=8``. The save endpoint after creation uses
+``operate_appmsg?sub=update&type=77`` (back to 77) — MP is internally
+inconsistent about this.
+
+**Editing an existing 贴图 draft**:
 
 ```
 https://mp.weixin.qq.com/cgi-bin/appmsg
   ?t=media/appmsg_edit
-  &action=add        # or &action=edit&appmsgid=<id> for existing draft
-  &type=77           # confirmed: 77 = 贴图
-  &token=<TOKEN>     # session CSRF token (URL-resident)
+  &action=edit
+  &type=77
+  &appmsgid=<id>
+  &token=<TOKEN>
   &lang=zh_CN
 ```
 
-After `action=add` MP allocates a new `appmsgid` and rewrites the URL
-to `action=edit&appmsgid=<id>`. That `appmsgid` is what we return as
-the provider's `external_id`.
+On first save, MP allocates a new ``appmsgid`` and rewrites the URL.
+That ``appmsgid`` is what we return as the provider's ``external_id``.
 
 ## Two endpoints we drive
 
