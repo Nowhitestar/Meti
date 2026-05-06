@@ -45,18 +45,23 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("doctor", help="Self-check: vault, providers, health")
 
-    sub_browser = sub.add_parser("browser", help="Manage browser sessions for providers")
+    sub_browser = sub.add_parser(
+        "browser",
+        help="Browser bridge status (uses your real Chrome via OpenCLI extension)",
+    )
     sub_browser.add_argument(
         "action",
-        choices=["login", "logout", "status"],
-        help="login: capture session in headed browser; "
-        "logout: delete saved state; status: list saved states",
+        choices=["status", "login", "doctor"],
+        help="status: extension connectivity check; "
+        "login: open provider's login URL in your Chrome (informational only — "
+        "your Chrome session is what mmp drives); "
+        "doctor: full opencli diagnostic",
     )
     sub_browser.add_argument(
         "provider",
         nargs="?",
         default=None,
-        help="Provider name (required for login/logout; optional for status)",
+        help="Provider name (required for login)",
     )
 
     sub_wizard = sub.add_parser("wizard", help="Conversational manifest wizard")
@@ -468,41 +473,59 @@ def cmd_wizard(args: argparse.Namespace) -> int:
 
 
 def cmd_browser(args: argparse.Namespace) -> int:
-    """Manage saved browser sessions for browser-flow providers (x-article, substack)."""
+    """Browser bridge status & login pointer.
+
+    The OpenCLI Chrome extension drives the user's real Chrome, so mmp
+    no longer manages session state. ``login`` just navigates to the
+    provider's login URL — the user logs in normally in Chrome, mmp
+    detects logged-in state via the extension on subsequent runs.
+    """
     from core import browser as br
     from core.errors import MMPError
     from core.provider import ProviderRegistry
 
     action = args.action
+
+    if action == "doctor":
+        result = br.doctor()
+        if result["stdout"]:
+            print(result["stdout"])
+        if result["stderr"]:
+            print(result["stderr"], file=sys.stderr)
+        return 0 if result["ok"] else 2
+
     if action == "status":
-        # List all saved states; no provider arg required.
-        from core import host as h
-
-        state_dir = h.user_data_dir() / "browser-state"
-        if not state_dir.exists():
-            print("(no saved browser states)")
-            return 0
-        for f in sorted(state_dir.glob("*.json")):
-            mtime = f.stat().st_mtime
-            from datetime import datetime, timezone
-
-            ts = datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
-            print(f"  {f.stem:20s}  saved {ts} UTC  ({f})")
-        return 0
-
-    if not args.provider:
-        print(f"ERROR  `mmp browser {action}` requires a provider name", file=sys.stderr)
-        return 2
-
-    if action == "logout":
-        if br.delete_state(args.provider):
-            print(f"OK  removed browser state for {args.provider}")
+        try:
+            connected = br.is_connected()
+        except br.BrowserNotInstalledError as e:
+            print(f"ERROR  {e}", file=sys.stderr)
+            return 2
+        if connected:
+            try:
+                st = br.state()
+                url = st.get("url", st.get("_raw", "?"))
+                title = st.get("title", "")
+                print(f"OK  Browser Bridge connected. Current tab: {url}")
+                if title:
+                    print(f"    title: {title}")
+            except br.MMPError as e:
+                print(f"ERROR  {e}", file=sys.stderr)
+                return 2
         else:
-            print(f"(no saved state for {args.provider})")
+            print(
+                "✖  Browser Bridge extension not connected.\n"
+                "Install: https://chromewebstore.google.com/detail/opencli/"
+                "ildkmabpimmkaediidaifkhjpohdnifk\n"
+                "Then make sure Chrome is open and the extension is enabled.",
+                file=sys.stderr,
+            )
+            return 2
         return 0
 
     if action == "login":
-        # Resolve provider, find login URL, run interactive flow.
+        if not args.provider:
+            print("ERROR  `mmp browser login` requires a provider name", file=sys.stderr)
+            return 2
         reg = ProviderRegistry()
         reg.discover()
         try:
@@ -514,15 +537,20 @@ def cmd_browser(args: argparse.Namespace) -> int:
         if not login_url:
             print(
                 f"ERROR  provider {args.provider!r} has no browser_login_url; "
-                f"this provider doesn't use browser sessions.",
+                f"this provider doesn't use a browser session.",
                 file=sys.stderr,
             )
             return 2
         try:
-            br.login_interactive(args.provider, login_url)
-        except MMPError as e:
+            br.open_url(login_url)
+        except br.MMPError as e:
             print(f"ERROR  {e}", file=sys.stderr)
             return 2
+        print(f"OK  Opened {login_url} in your Chrome.")
+        print(
+            "  Log in normally if you aren't already. mmp uses your real Chrome\n"
+            "  session; no separate state to manage."
+        )
         return 0
 
     print(f"ERROR  unknown browser action: {action}", file=sys.stderr)

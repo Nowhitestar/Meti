@@ -52,56 +52,48 @@ def test_execute_dry_run(article, tmp_path):
     assert res.mode_actual == "dry-run"
 
 
-def test_execute_draft_returns_stub_when_no_browser_state(article, tmp_path, monkeypatch):
-    """v0.3.1: browser flow tries to fire, falls back to stub when no
-    saved browser state exists (the no-browser-state path).
-    """
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path))
-
-    run_dir = tmp_path / "run"
-    (run_dir / "packs" / "x-article").mkdir(parents=True)
-    p = XArticleProvider()
-    p.prepare(article, article.targets[0], run_dir)
-    res = p.execute(
-        run_dir,
-        article.targets[0],
-        mode="draft",
-        credentials={},
-    )
-    assert res.mode_actual == "stub"
-    assert res.extras.get("connector_status") == "no-browser-state"
-    assert "remediation" in res.extras
-    # TODO doc explains both options
-    todo = (run_dir / "packs" / "x-article" / "TODO-connector.md").read_text()
-    assert "mmp browser login x-article" in todo
-
-
-def test_execute_draft_invokes_browser_flow_when_state_present(article, tmp_path, monkeypatch):
-    """When state exists AND playwright is available, execute calls
-    create_draft and returns mode_actual=draft-platform with the URL/id."""
+def test_execute_draft_returns_stub_when_bridge_disconnected(article, tmp_path):
+    """When the OpenCLI Browser Bridge is not connected (no extension /
+    Chrome closed), execute falls back to stub mode and writes
+    TODO-connector.md instead of failing."""
     from unittest.mock import patch
 
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path))
+    run_dir = tmp_path / "run"
+    (run_dir / "packs" / "x-article").mkdir(parents=True)
+    p = XArticleProvider()
+    p.prepare(article, article.targets[0], run_dir)
 
-    # Plant a fake state file
-    state_dir = tmp_path / ".config" / "mmp" / "browser-state"
-    state_dir.mkdir(parents=True)
-    (state_dir / "x-article.json").write_text('{"cookies": [], "origins": []}')
+    with patch("core.browser.is_connected", return_value=False):
+        res = p.execute(run_dir, article.targets[0], mode="draft", credentials={})
+
+    assert res.mode_actual == "stub"
+    assert res.extras["connector_status"] == "bridge-not-connected"
+    assert "remediation" in res.extras
+    todo = (run_dir / "packs" / "x-article" / "TODO-connector.md").read_text()
+    assert "OpenCLI" in todo
+    assert "chrome extension" in todo.lower()
+
+
+def test_execute_draft_invokes_browser_flow_when_bridge_connected(article, tmp_path):
+    """When the bridge is connected, execute calls create_draft and
+    returns mode_actual=draft-platform with the URL / id."""
+    from unittest.mock import patch
 
     run_dir = tmp_path / "run"
     (run_dir / "packs" / "x-article").mkdir(parents=True)
     p = XArticleProvider()
     p.prepare(article, article.targets[0], run_dir)
 
-    with patch(
-        "providers.x_article.internal.browser_flow.create_draft",
-        return_value={
-            "draft_url": "https://x.com/i/articles/12345/edit",
-            "external_id": "12345",
-        },
-    ) as mock_create:
+    with (
+        patch("core.browser.is_connected", return_value=True),
+        patch(
+            "providers.x_article.internal.browser_flow.create_draft",
+            return_value={
+                "draft_url": "https://x.com/i/articles/12345/edit",
+                "external_id": "12345",
+            },
+        ) as mock_create,
+    ):
         res = p.execute(run_dir, article.targets[0], mode="draft", credentials={})
 
     mock_create.assert_called_once()
@@ -111,19 +103,14 @@ def test_execute_draft_invokes_browser_flow_when_state_present(article, tmp_path
     assert res.draft_url == "https://x.com/i/articles/12345/edit"
 
 
-def test_health_check_reflects_browser_state(article, tmp_path, monkeypatch):
-    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
-    monkeypatch.setenv("HOME", str(tmp_path))
+def test_health_check_reflects_bridge_connectivity(article):
+    from unittest.mock import patch
 
     p = XArticleProvider()
-    # No state → failed
-    assert p.health_check({}).value == "failed"
-
-    # Plant state → ok
-    state_dir = tmp_path / ".config" / "mmp" / "browser-state"
-    state_dir.mkdir(parents=True)
-    (state_dir / "x-article.json").write_text("{}")
-    assert p.health_check({}).value == "ok"
+    with patch("core.browser.is_connected", return_value=False):
+        assert p.health_check({}).value == "failed"
+    with patch("core.browser.is_connected", return_value=True):
+        assert p.health_check({}).value == "ok"
 
 
 def test_browser_login_url_is_set():

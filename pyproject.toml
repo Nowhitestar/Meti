@@ -21,11 +21,14 @@ dev = [
     "mypy>=1.8",
     "types-PyYAML",
 ]
-# Heavy optional dep: ~100MB browser binaries. Required for x-article and
-# substack real-connector flows. After install run `playwright install chromium`.
-browser = [
-    "playwright>=1.40",
-]
+# NOTE: Browser-flow providers (x-article, substack) drive the user's
+# real Chrome via OpenCLI Browser Bridge. OpenCLI is a Node.js CLI
+# (invoked via `npx @jackwener/opencli`), so there's NO Python dep
+# needed here. Setup:
+#   1. Node.js >= 21 (`brew install node` / `apt install nodejs npm`)
+#   2. Chrome extension: https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk
+#   3. Verify: `mmp browser status`
+# See docs/browser-connectors.md for details.
 
 [tool.setuptools.packages.find]
 include = ["core*", "providers*"]
@@ -46,11 +49,6 @@ warn_redundant_casts = true
 disallow_untyped_defs = true
 files = ["core"]
 
-# playwright is an optional dep with no published type stubs in our pin range.
-# Suppress import-not-found for it specifically.
-[[tool.mypy.overrides]]
-module = "playwright.*"
-ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "providers"]
