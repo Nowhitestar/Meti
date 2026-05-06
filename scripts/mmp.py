@@ -288,8 +288,127 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
-    print("resume not implemented in Plan 1; coming soon.", file=sys.stderr)
-    return 1
+    """Re-execute targets that didn't reach status=ok in a previous run.
+
+    v0.3 baseline: target-level resume. Re-runs `prepare + execute` for any
+    target whose previous status was failed/skipped/partial. Targets already
+    at status=ok are skipped (logged as RESUME_SKIP).
+
+    Future (v0.4+): step-level resume using `Run.checkpoint()` for finer
+    granularity (e.g. skip already-uploaded thumbs).
+    """
+    import json
+
+    from core.credentials import CredentialStore
+    from core.errors import MMPError
+    from core.manifest import load_manifest
+    from core.provider import ProviderRegistry
+    from core.run import Run
+
+    run_dir = Path(args.run_dir).resolve()
+    if not run_dir.exists():
+        print(f"ERROR  run dir not found: {run_dir}", file=sys.stderr)
+        return 2
+
+    manifest_path = run_dir / "manifest.yaml"
+    result_path = run_dir / "result.json"
+    if not manifest_path.exists() or not result_path.exists():
+        print(
+            f"ERROR  run dir missing manifest.yaml or result.json: {run_dir}",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        m = load_manifest(manifest_path)
+        prev_result = json.loads(result_path.read_text(encoding="utf-8"))
+        prev_targets = {t["name"]: t for t in prev_result.get("targets", [])}
+
+        run = Run.from_dir(run_dir)
+        run.log("RESUME_START", run_id=run.run_id, run_dir=str(run_dir))
+
+        reg = ProviderRegistry()
+        reg.discover()
+        store = CredentialStore()
+
+        only = set(args.target.split(",")) if args.target else None
+
+        for t in m.targets:
+            if only and t.name not in only:
+                continue
+            prev = prev_targets.get(t.name, {})
+            prev_status = prev.get("status")
+            if prev_status == "ok":
+                run.log("RESUME_SKIP", target=t.name, reason="already-ok")
+                # Carry forward the previous successful result so finalize()
+                # writes a coherent result.json (don't lose the external_id).
+                run.add_target_result(
+                    name=prev.get("name", t.name),
+                    account=prev.get("account", t.account),
+                    status="ok",
+                    mode_actual=prev.get("mode_actual", "dry-run"),
+                    external_id=prev.get("external_id"),
+                    draft_url=prev.get("draft_url"),
+                )
+                continue
+
+            run.log("RESUME_RETRY", target=t.name, prev_status=prev_status)
+            try:
+                provider = reg.resolve(t.name)
+                cap_key = (
+                    "publish" if t.mode == "publish" else ("draft" if t.mode == "draft" else None)
+                )
+                if cap_key and not provider.capabilities.get(cap_key, False):
+                    run.add_target_result(
+                        name=t.name,
+                        account=t.account,
+                        status="failed",
+                        mode_actual="dry-run",
+                        error=f"capability: provider does not support mode={t.mode}",
+                    )
+                    run.log("CAPABILITY_FAIL", target=t.name, mode=t.mode)
+                    continue
+
+                provider.prepare(m, t, run.dir)
+                run.log("PREPARE_OK", target=t.name)
+
+                creds: dict[str, str] = {}
+                if t.mode != "dry-run":
+                    required = [c.key for c in provider.required_credentials]
+                    if required:
+                        creds = store.get(t.name, t.account, required_keys=required)
+
+                exec_res = provider.execute(run.dir, t, t.mode, creds)
+                run.add_target_result(
+                    name=t.name,
+                    account=t.account,
+                    status=exec_res.status,
+                    mode_actual=exec_res.mode_actual,
+                    external_id=exec_res.external_id,
+                    draft_url=exec_res.draft_url,
+                )
+                run.log(
+                    "EXECUTE_OK",
+                    target=t.name,
+                    mode_actual=exec_res.mode_actual,
+                    external_id=exec_res.external_id,
+                )
+            except Exception as exc:
+                run.add_target_result(
+                    name=t.name,
+                    account=t.account,
+                    status="failed",
+                    mode_actual=t.mode,
+                    error=str(exc),
+                )
+                run.log("TARGET_FAIL", target=t.name, error=str(exc))
+
+        run.finalize()
+        print(f"RUN_DIR  {run.dir}")
+        return 0
+    except MMPError as e:
+        print(f"ERROR  {e}", file=sys.stderr)
+        return 2
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
