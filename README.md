@@ -15,11 +15,19 @@ manifest wizard + age-encrypted vault. See [`docs/HANDOFF.md`](docs/HANDOFF.md).
 
 ### As a Claude Code plugin
 
+(Marketplace submission pending — for now, clone the repo and point Claude
+Code at the directory.)
+
+```bash
+git clone https://github.com/yxliao-lewis/multi-media-publisher.git
+# Then in Claude Code: settings → plugins → load from directory
+```
+
+After v0.2.0 marketplace submission lands, the install will be:
+
 ```
 /plugin install multi-media-publisher
 ```
-
-(Or clone this repo and point Claude Code at the directory.)
 
 ### As an OpenClaw skill
 
