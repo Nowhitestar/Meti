@@ -32,7 +32,7 @@ Subcommands:
 - `list providers|accounts|runs` — inspect state
 - `resume <run-dir> [--target NAME]` — recover failed run
 - `doctor` — self-check
-- `wizard [--type ... --targets ...]` — conversational manifest builder (Plan 2)
+- `wizard [--type ... --targets ...]` — conversational manifest builder
 
 ## Default mode = draft
 
@@ -74,13 +74,13 @@ ask in the active conversation.
 
 ## v0.2 supported providers
 
-| Provider | Media | Mode support |
-|---|---|---|
-| `wechat-article` | longform | dry-run, draft (real WeChat API; needs AppID/AppSecret) |
-| `xiaohongshu` | image-post (video planned) | dry-run, draft (local draft via xiaohongshu skill) |
-| `wechat-image` | image-post | dry-run, draft (browser-flow guide) |
-| `x-article` | longform | dry-run, draft (payload + TODO; no connector in v0.2) |
-| `substack` | longform | dry-run, draft (payload + TODO; no connector in v0.2) |
+| Provider | Media | Mode support | Notes |
+|---|---|---|---|
+| `wechat-article` | longform | dry-run, draft | Real WeChat OA API; needs AppID/AppSecret |
+| `xiaohongshu` | image-post (video planned) | dry-run, draft (local) | Uses xiaohongshu skill's `draft.sh` |
+| `wechat-image` | image-post | dry-run, draft (browser-flow guide) | UI calibration TODO; guide-only path |
+| `x-article` | longform | dry-run, draft (payload + TODO) | No connector yet; manual paste step |
+| `substack` | longform | dry-run, draft (payload + TODO) | No connector yet; manual paste step |
 
 ## Safety rules
 
@@ -95,7 +95,7 @@ ask in the active conversation.
 See `docs/superpowers/specs/2026-05-05-multi-media-publisher-redesign-design.md`
 for the full architecture spec. In short:
 
-- **Shell**: this SKILL.md + `.claude-plugin/plugin.json` (Plan 4)
+- **Shell**: this SKILL.md + `.claude-plugin/plugin.json`
 - **Core**: `core/` — host-agnostic Python (manifest, provider registry, vault, run lifecycle)
 - **Providers**: `providers/<name>/` (bundled) + `~/.config/mmp/providers/<name>/` (user)
 
@@ -122,4 +122,4 @@ python3 scripts/mmp.py list runs
 - `examples/longform.yaml` — sample manifest
 - `docs/HANDOFF.md` — historical state notes
 - `docs/superpowers/specs/2026-05-05-multi-media-publisher-redesign-design.md` — v0.2 design spec
-- `docs/superpowers/plans/2026-05-05-plan-*.md` — v0.2 implementation plans
+- `docs/superpowers/plans/` — v0.2 implementation plans (historical)
