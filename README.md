@@ -1,4 +1,5 @@
 <div align="center">
+  <img src="assets/logo.svg" width="72" height="72" alt="Meti"/>
   <h1>Meti</h1>
   <p><b>One manifest, every Chinese-platform you publish to.</b></p>
   <a href="https://github.com/Nowhitestar/meti/stargazers"><img src="https://img.shields.io/github/stars/Nowhitestar/meti?style=flat-square" alt="Stars"></a>
