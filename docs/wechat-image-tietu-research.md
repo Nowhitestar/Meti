@@ -84,7 +84,7 @@ Response (JSON):
   "base_resp": {"ret": 0, "err_msg": "ok"},
   "location": "bizfile",
   "type":     "image",
-  "content":  "<MP_FILE_ID>",                            ← MP-internal file_id
+  "content":  "<MP_FILE_ID>",                          ← MP-internal file_id
   "cdn_url":  "https://mmbiz.qpic.cn/sz_mmbiz_png/.../0?wx_fmt=png&from=appmsg",
   "ai_status": 1
 }
@@ -160,8 +160,8 @@ Response (JSON):
 ```json
 {
   "base_resp": {"ret": 0, "err_msg": ""},
-  "appMsgId": <DRAFT_ID>,                            ← updated/created draft id
-  "data_seq": "4504367451828338688",
+  "appMsgId": <DRAFT_ID>,                           ← updated/created draft id
+  "data_seq": "<19-DIGIT_SEQ>",
   "msg_index_id_list": ["0_<DRAFT_ID>_0"],
   "ret": "0",
   ...

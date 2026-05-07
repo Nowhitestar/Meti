@@ -1,13 +1,50 @@
+# ----- Python -----
 __pycache__/
 *.pyc
-.DS_Store
-runs/
-.env
-*.log
-
-# v0.2 additions
+*.pyo
+*.egg-info/
 .coverage
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-*.egg-info/
+
+# ----- OS / editor -----
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# ----- Secrets / runtime state -----
+# Real-account verification artifacts contain platform tokens, draft URLs,
+# and the maintainer's account history. Never commit.
+runs/
+.env
+.env.*
+!.env.example
+*.log
+
+# Encrypted vaults & age keys (also live under ~/.config/meti/, but keep
+# stragglers out if a user puts them in the repo dir).
+*.age
+age-key.txt
+credentials.json
+credentials.json.age
+
+# ----- Coding-agent / planning workspaces -----
+# Claude Code worktrees + transient state.
+.claude/
+# OpenClaw local workspace (skill cache, tmp, runs).
+.openclaw/
+# gsd / planning artifacts that might leak from agent runs.
+.planning/
+
+# ----- Internal-only docs (do not redistribute) -----
+# These were deleted from history at v0.4.x; keep them out if they reappear
+# locally during a workflow.
+docs/superpowers/
+docs/HANDOFF.md
+docs/legacy-research.md
+
+# Scratchpads — anything ending in .local.md is personal notes.
+*.local.md
+private/

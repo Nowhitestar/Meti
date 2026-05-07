@@ -41,9 +41,9 @@ def test_appmsgid_extraction_missing():
 
 
 def test_token_regex_captures_session():
-    url = "https://mp.weixin.qq.com/cgi-bin/home?t=home/index&lang=zh_CN&token=<MP_TOKEN>"
+    url = "https://mp.weixin.qq.com/cgi-bin/home?t=home/index&lang=zh_CN&token=999999999"
     m = bf.TOKEN_RE.search(url)
-    assert m and m.group(1) == "<MP_TOKEN>"
+    assert m and m.group(1) == "999999999"
 
 
 def test_create_draft_requires_at_least_one_image():
@@ -122,7 +122,7 @@ def test_create_draft_happy_path(fake_image):
                         "status": 200,
                         "body": {
                             "base_resp": {"ret": 0},
-                            "content": "<MP_FILE_ID>",
+                            "content": "100099999",
                             "cdn_url": "https://mmbiz.qpic.cn/...",
                         },
                     },

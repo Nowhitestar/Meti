@@ -29,7 +29,7 @@ Triple etymology: Greek *mētis* (μῆτις, wise counsel), English *meticulou
 
 `wechat-image` provider rewritten to drive WeChat MP "贴图" (image post, `type=77`) creation programmatically. Previous v0.2 `wechat-image` only emitted a manual-steps Markdown guide; v0.3.2 creates a real draft.
 
-Real-account verified: `appmsgid=<DRAFT_ID>`, two test images + title + caption all landed in the user's WeChat OA draft folder.
+Real-account verified end-to-end against the maintainer's test WeChat OA: two test images, title, and caption all landed in the platform's draft folder.
 
 ### Added
 
@@ -44,7 +44,7 @@ Browser-flow infrastructure + first two browser-driven providers.
 
 Pivoted away from Playwright (anti-automation defenses on Google OAuth, plus `--remote-debugging-port` setup friction for end users) to the [OpenCLI Bridge](https://github.com/jackwener/opencli) Chrome extension model. Logged-in browser sessions are reused as-is, with no separate Chromium and no debug-port reconfiguration.
 
-Real-account verified: x-article draft `<X_DRAFT_ID>`, substack draft `<SUBSTACK_DRAFT_ID>`.
+Real-account verified end-to-end on both providers against the maintainer's test accounts.
 
 ### Added
 
@@ -79,7 +79,7 @@ WeChat API proxy support, vault hardening, and `meti resume` for retry-from-fail
 
 Major refactor: provider abstraction + dual-host distribution + wizard.
 
-Real-account verified end-to-end: `wechat-article` creates real drafts on `mp.weixin.qq.com`; `xiaohongshu` creates real local drafts via the xhs skill's `draft.sh`. 7 integration bugs discovered + fixed during verification. See `docs/HANDOFF.md` "Discovered during real-account verification" for the full list.
+Real-account verified end-to-end: `wechat-article` creates real drafts on `mp.weixin.qq.com`; `xiaohongshu` creates real local drafts via the xhs skill's `draft.sh`. 7 integration bugs were discovered and fixed during verification.
 
 ### Added
 

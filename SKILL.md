@@ -92,8 +92,7 @@ ask in the active conversation.
 
 ## Architecture
 
-See `docs/superpowers/specs/2026-05-05-meti-redesign-design.md`
-for the full architecture spec. In short:
+See `docs/architecture.md` for the full overview. In short:
 
 - **Shell**: this SKILL.md + `.claude-plugin/plugin.json`
 - **Core**: `core/` — host-agnostic Python (manifest, provider registry, vault, run lifecycle)
@@ -118,8 +117,9 @@ python3 scripts/meti.py list runs
 ## Bundled resources
 
 - `core/` — manifest, provider, credentials, run, rules, host, errors
-- `providers/wechat_article/` — first-party WeChat OA article provider
+- `providers/<name>/` — first-party providers (wechat-article, wechat-image, xiaohongshu, x-article, substack)
 - `examples/longform.yaml` — sample manifest
-- `docs/HANDOFF.md` — historical state notes
-- `docs/superpowers/specs/2026-05-05-meti-redesign-design.md` — v0.2 design spec
-- `docs/superpowers/plans/` — v0.2 implementation plans (historical)
+- `docs/architecture.md` — high-level architecture overview
+- `docs/provider-contract.md` — how to author a new provider
+- `docs/safety-policy.md` — draft-first / publishing safeguards
+- `docs/browser-connectors.md` — OpenCLI Bridge setup for browser-flow providers

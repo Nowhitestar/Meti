@@ -1,7 +1,8 @@
 # Architecture
 
-This is the user-facing architecture summary. The full design spec lives at
-`docs/superpowers/specs/2026-05-05-meti-redesign-design.md`.
+This is the user-facing architecture summary. For provider-authoring details
+see `provider-contract.md`; for browser-connector internals see
+`browser-connectors.md`.
 
 ## Three layers
 
