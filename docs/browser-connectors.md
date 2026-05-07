@@ -9,8 +9,7 @@ that exposes browser primitives over a CLI.
 
 The advantage over a fresh-Chromium / Playwright approach:
 
-- **No automation detection.** X / Google / Cloudflare don't flag
-  your real Chrome as a bot — it's literally your browser.
+- **Works inside your normal browser session.** Platform automation flags target headless Chromium and CDP-controlled instances; your everyday Chrome window is exactly what the platform expects to see.
 - **No separate login.** Your existing X / Substack login session is
   reused as-is; no captcha re-solving, no 2FA dance per use.
 - **No state files to manage.** Login state lives in your Chrome
@@ -97,12 +96,12 @@ or wechat-image), meti:
 
 1. Calls `opencli browser open <provider compose URL>` in your Chrome
 2. For wechat-image: injects local image bytes via the
-   `DataTransfer` trick — MP's webuploader picks up the synthetic
+   `DataTransfer` API — MP's webuploader picks up the programmatic
    `change` event and POSTs to `/cgi-bin/filetransfer` normally
 3. Drives the editor (type title, body, etc.)
 4. For X/Substack: editor auto-saves while we type. For wechat-image:
    we click MP's own "保存为草稿" button so MP's internal save logic
-   (with its `fingerprint`-signing wrappers) runs end-to-end
+   (with its request-signing wrappers) runs end-to-end
 5. Captures the draft URL / ID, returns as `external_id`
 
 If the bridge isn't connected, the run gracefully falls back to
@@ -170,12 +169,12 @@ the same Chinese console.
 
 ## Notes specific to `wechat-image` (贴图)
 
-The 贴图 connector is the trickiest of the three because:
+The 贴图 connector has a few wrinkles the other two don't:
 
 1. **No cover-only API**: WeChat Open Platform's `material/add_material`
    + `draft/add` covers articles (图文) but NOT 贴图 (`type=77`).
    See `docs/wechat-image-tietu-research.md` for the full
-   reverse-engineering notes that informed the implementation.
+   implementation notes.
 2. **Local-file upload**: unlike X / Substack drafts (text-only), 贴图
    requires real images. We pass them through the page via base64 in
    `eval` and reconstruct as a `Blob` → `File` → `DataTransfer.items.add`
@@ -183,9 +182,7 @@ The 贴图 connector is the trickiest of the three because:
    up the same as a real drag-drop.
 3. **`fingerprint` form field**: MP's save endpoint expects a 32-char
    MD5 in the body that's generated inside MP's own seajs modules.
-   We sidestep this by clicking MP's own "保存为草稿" button after
-   prepping the DOM — MP's internal save logic then runs end-to-end
-   and signs the request itself.
+   We let MP handle this by populating the DOM and clicking MP's own "保存为草稿" button — the page's existing save flow runs end-to-end and signs the request itself.
 4. **URL pattern is non-obvious**: `?action=add&type=77` returns 404.
    Creating a fresh draft uses
    `?t=media/appmsg_edit_v2&action=edit&isNew=1&type=10&createType=8`.
@@ -219,7 +216,7 @@ If MP changes UI:
 - ✅ **v0.3.1**: x-article + substack connectors
 - ✅ **v0.3.2**: wechat-image (贴图) connector — adds local-image
   injection via `DataTransfer` and "click MP's own save" pattern
-  (avoids reverse-engineering MP's `fingerprint` MD5)
+  (no need to replicate MP's request-signing logic ourselves)
 - **v0.4**: wechat-channel (视频号) connector
 - **v0.4**: per-provider session-expiry detection (auto-prompt re-login)
 - **v0.4**: cover image upload for x-article + substack (currently
@@ -232,8 +229,7 @@ If MP changes UI:
 v0.3.1 originally used Playwright with a fresh Chromium. Two
 problems blocked verification:
 
-1. **Google OAuth (and other anti-bot) detected Playwright** and
-   refused logins. X uses Google OAuth as a sign-in option; that
+1. **Google OAuth flagged Playwright as automated** and refused logins. X uses Google OAuth as a sign-in option; that
    path was unusable.
 2. **Reusing the user's real Chrome via CDP** required them to
    re-launch Chrome with `--remote-debugging-port` and other flags,
@@ -241,8 +237,8 @@ problems blocked verification:
    default profile for security). That's heavy friction for an
    end-user setup.
 
-OpenCLI sidesteps both: an extension + daemon attaches inside the
-user's existing Chrome session, so anti-bot defenses see the same
+OpenCLI avoids both: an extension + daemon attaches inside the
+user's existing Chrome session, so platform defenses see the same
 browser they'd see if the user were clicking manually.
 
 ## Related links

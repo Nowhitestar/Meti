@@ -3,19 +3,19 @@
 from __future__ import annotations
 
 
-class MMPError(Exception):
+class MetiError(Exception):
     """Base class for all meti errors."""
 
 
-class ManifestError(MMPError):
+class ManifestError(MetiError):
     """Manifest schema or validation failure."""
 
 
-class ProviderNotFoundError(MMPError):
+class ProviderNotFoundError(MetiError):
     """Requested provider not registered."""
 
 
-class MissingCredentialError(MMPError):
+class MissingCredentialError(MetiError):
     """Required credentials not available in vault or ENV."""
 
     def __init__(self, provider: str, keys: list[str]) -> None:
@@ -24,11 +24,11 @@ class MissingCredentialError(MMPError):
         super().__init__(f"missing credentials for {provider}: {keys}")
 
 
-class PlatformRuleViolation(MMPError):
+class PlatformRuleViolation(MetiError):
     """Manifest violates a provider's platform rules at error severity."""
 
 
-class ProviderExecutionError(MMPError):
+class ProviderExecutionError(MetiError):
     """Provider.execute raised; carries enough metadata for resume."""
 
     def __init__(

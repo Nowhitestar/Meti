@@ -39,12 +39,12 @@ normally, meti can drive Chrome for you afterward.
 
 Error model
 -----------
-- ``BrowserNotInstalledError`` (MMPError): OpenCLI not on PATH and npx
+- ``BrowserNotInstalledError`` (MetiError): OpenCLI not on PATH and npx
   fetch failed. Install Node.js + retry, or install opencli globally.
-- ``BrowserNotConnectedError`` (MMPError): OpenCLI is callable but
+- ``BrowserNotConnectedError`` (MetiError): OpenCLI is callable but
   reports the Browser Bridge extension is not connected (extension not
   installed / disabled / Chrome not running).
-- ``BrowserCommandError`` (MMPError): an opencli command exited
+- ``BrowserCommandError`` (MetiError): an opencli command exited
   non-zero with stderr that didn't match a known pattern.
 """
 
@@ -55,22 +55,22 @@ import shutil
 import subprocess
 from typing import Any
 
-from core.errors import MMPError
+from core.errors import MetiError
 
 # OpenCLI npm package used at v0.3.1 release. Pinning lets us evolve the
 # backend without breaking users; bump in tandem with provider updates.
 _OPENCLI_PKG = "@jackwener/opencli"
 
 
-class BrowserNotInstalledError(MMPError):
+class BrowserNotInstalledError(MetiError):
     """OpenCLI binary not callable. Install Node.js >= 21 and retry."""
 
 
-class BrowserNotConnectedError(MMPError):
+class BrowserNotConnectedError(MetiError):
     """OpenCLI reports the Chrome extension is not connected."""
 
 
-class BrowserCommandError(MMPError):
+class BrowserCommandError(MetiError):
     """An opencli browser subcommand failed unexpectedly."""
 
 

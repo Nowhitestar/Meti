@@ -17,7 +17,7 @@ Writers who care about more than one Chinese-platform audience face the same cho
 Meti collapses that into **one YAML manifest → drafts on every platform**, with an explicit safety model:
 
 - **Draft-first by default.** Public publishing requires explicit opt-in *plus* an in-conversation confirmation. Mistakes stop at the draft folder.
-- **Cookies stay in your real Chrome.** No CDP debug-port dance, no fresh-Chromium anti-bot battle. Browser-flow providers drive your existing logged-in session via the [OpenCLI Bridge](https://github.com/jackwener/opencli) extension.
+- **Cookies stay in your real Chrome.** No CDP debug-port dance, no fresh-Chromium login dance. Browser-flow providers reuse your existing logged-in session via the [OpenCLI Bridge](https://github.com/jackwener/opencli) extension.
 - **Credentials are encrypted at rest.** `age`-encrypted vault at `~/.config/meti/credentials.json.age`. Secrets never appear in run artifacts.
 - **Every run is reproducible.** A self-contained run dir captures the locked manifest, payloads, checkpoints, log, and result. Resume from any failure point with `meti resume <run-dir>`.
 
@@ -132,7 +132,7 @@ tags: [ai, essay]
 | Path | When | Trade-off |
 |---|---|---|
 | **API** (`wechat-article`) | Platform exposes a draft API + you have AppID/Secret | Fast, scriptable, no Chrome dependency |
-| **Browser-flow** (`wechat-image`, `x-article`, `substack`) | No API exists, OR API can't create the post type | Reuses real Chrome session, no anti-bot detection, breaks when platform UI drifts (selectors are constants at the top of each `internal/browser_flow.py`) |
+| **Browser-flow** (`wechat-image`, `x-article`, `substack`) | No API exists, OR API can't create the post type | Reuses real Chrome session, works inside the browser the platform expects, breaks when platform UI drifts (selectors are constants at the top of each `internal/browser_flow.py`) |
 
 **Safety is a property of the design, not a runtime check.** `mode: draft` is the default for every provider. `mode: publish` requires both manifest opt-in *and* an in-conversation `--confirm-publish` flag. Vault writes are atomic (tmp + fsync + os.replace) under flock — no concurrent-write data loss. Run dirs are append-only — `result.json` is written once, at the end.
 
@@ -160,7 +160,7 @@ tests/                 # 142 unit + integration tests
 - ✅ **v0.2** — Provider abstraction + dual-host distribution + wizard + age-encrypted vault
 - ✅ **v0.3** — WeChat API proxy (split-routing IP whitelist) + vault hardening + `meti resume`
 - ✅ **v0.3.1** — `x-article` + `substack` connectors via OpenCLI Bridge
-- ✅ **v0.3.2** — `wechat-image` (贴图) connector — solves the local-file-upload + `fingerprint` reverse-engineering problem
+- ✅ **v0.3.2** — `wechat-image` (贴图) connector — solves the local-file-upload + request-signing field problem
 - ✅ **v0.4** — Rebrand to Meti
 - ⏳ **v0.4.x** — `wechat-channel` (视频号) connector
 - ⏳ **v0.5** — Multi-account routing (`target.account: <name>`) + per-provider session-expiry detection

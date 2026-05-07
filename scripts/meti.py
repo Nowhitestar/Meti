@@ -82,7 +82,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def cmd_validate(args: argparse.Namespace) -> int:
-    from core.errors import MMPError
+    from core.errors import MetiError
     from core.manifest import load_manifest
     from core.provider import ProviderRegistry
     from core.rules import Severity, Violation
@@ -123,7 +123,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
             return 2
         print(f"OK  {len(m.targets)} targets validated.")
         return 0
-    except MMPError as e:
+    except MetiError as e:
         print(f"ERROR  {e}", file=sys.stderr)
         return 2
 
@@ -131,7 +131,7 @@ def cmd_validate(args: argparse.Namespace) -> int:
 def cmd_publish(args: argparse.Namespace) -> int:
     from core import __version__
     from core.credentials import CredentialStore
-    from core.errors import MMPError
+    from core.errors import MetiError
     from core.manifest import load_manifest, write_lock
     from core.provider import ProviderRegistry
     from core.run import Run
@@ -233,7 +233,7 @@ def cmd_publish(args: argparse.Namespace) -> int:
         run.finalize()
         print(f"RUN_DIR  {run.dir}")
         return 0
-    except MMPError as e:
+    except MetiError as e:
         print(f"ERROR  {e}", file=sys.stderr)
         return 2
 
@@ -319,7 +319,7 @@ def cmd_resume(args: argparse.Namespace) -> int:
     import json
 
     from core.credentials import CredentialStore
-    from core.errors import MMPError
+    from core.errors import MetiError
     from core.manifest import load_manifest
     from core.provider import ProviderRegistry
     from core.run import Run
@@ -425,7 +425,7 @@ def cmd_resume(args: argparse.Namespace) -> int:
         run.finalize()
         print(f"RUN_DIR  {run.dir}")
         return 0
-    except MMPError as e:
+    except MetiError as e:
         print(f"ERROR  {e}", file=sys.stderr)
         return 2
 
@@ -453,14 +453,14 @@ def cmd_wizard(args: argparse.Namespace) -> int:
         print(json.dumps(ctx, indent=2, ensure_ascii=False))
         return 0
     if args.commit:
-        from core.errors import MMPError
+        from core.errors import MetiError
         from core.wizard.commit import commit_manifest
 
         try:
             run_dir = commit_manifest(args.commit)
             print(f"RUN_DIR  {run_dir}")
             return 0
-        except MMPError as e:
+        except MetiError as e:
             print(f"ERROR  {e}", file=sys.stderr)
             return 2
     # interactive (no flags) — Claude is expected to drive via SKILL.md prompts
@@ -481,7 +481,7 @@ def cmd_browser(args: argparse.Namespace) -> int:
     detects logged-in state via the extension on subsequent runs.
     """
     from core import browser as br
-    from core.errors import MMPError
+    from core.errors import MetiError
     from core.provider import ProviderRegistry
 
     action = args.action
@@ -508,7 +508,7 @@ def cmd_browser(args: argparse.Namespace) -> int:
                 print(f"OK  Browser Bridge connected. Current tab: {url}")
                 if title:
                     print(f"    title: {title}")
-            except br.MMPError as e:
+            except br.MetiError as e:
                 print(f"ERROR  {e}", file=sys.stderr)
                 return 2
         else:
@@ -530,7 +530,7 @@ def cmd_browser(args: argparse.Namespace) -> int:
         reg.discover()
         try:
             provider = reg.resolve(args.provider)
-        except MMPError as e:
+        except MetiError as e:
             print(f"ERROR  {e}", file=sys.stderr)
             return 2
         login_url = getattr(provider, "browser_login_url", None)
@@ -543,7 +543,7 @@ def cmd_browser(args: argparse.Namespace) -> int:
             return 2
         try:
             br.open_url(login_url)
-        except br.MMPError as e:
+        except br.MetiError as e:
             print(f"ERROR  {e}", file=sys.stderr)
             return 2
         print(f"OK  Opened {login_url} in your Chrome.")

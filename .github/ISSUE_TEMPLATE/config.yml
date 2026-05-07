@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 中文 Discussions / 中文交流
+    url: https://github.com/Nowhitestar/meti/discussions
+    about: Open-ended questions, design proposals, share what you've published with Meti — bilingual is fine.
+  - name: Read the docs first
+    url: https://github.com/Nowhitestar/meti/tree/main/docs
+    about: Architecture, provider contract, browser connectors, safety policy — many questions are answered here.

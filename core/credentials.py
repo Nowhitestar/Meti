@@ -28,12 +28,12 @@ from pathlib import Path
 import pyrage  # type: ignore[import-untyped]
 
 from core import host
-from core.errors import MissingCredentialError, MMPError
+from core.errors import MetiError, MissingCredentialError
 
 _VAULT_VERSION = 1
 
 
-class VaultIntegrityError(MMPError):
+class VaultIntegrityError(MetiError):
     """Vault file exists but cannot be decrypted with the available key.
 
     Most common cause: the age key file was deleted (or rotated) but the

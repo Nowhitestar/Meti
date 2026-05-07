@@ -1,12 +1,9 @@
-# wechat-image (贴图) reverse-engineering notes
+# wechat-image (贴图) implementation notes
 
-This file documents the findings from network-capture of the WeChat MP
-"贴图" (sticker / image post, `type=77`) creation flow. It informs the
+This file documents the WeChat MP "贴图" (sticker / image post, `type=77`) creation flow as observed from the editor's own network calls. It informs the
 implementation of `providers/wechat_image/internal/browser_flow.py`.
 
-Captured against `mp.weixin.qq.com` Creator UI on 2026-05-06 with an
-authenticated Chrome session via the OpenCLI Bridge (XHR/fetch
-interceptor + `opencli browser network` server-side capture).
+Observed on `mp.weixin.qq.com`'s Creator UI on 2026-05-06 with an authenticated Chrome session via the OpenCLI Bridge (XHR/fetch tracing + `opencli browser network` capture).
 
 ## Why "browser-flow" and not API
 
@@ -183,22 +180,19 @@ Response (JSON):
 | `uin`       | `wx.data.uin` |
 | `appmsgid`  | `wx.cgiData.app_id` (after MP allocates) |
 
-## The `fingerprint` problem
+## The `fingerprint` field
 
 `fingerprint` (32-char MD5) is in every authenticated MP request body
 but **not exposed as a global** — it's computed inside MP's seajs
 modules and wrapped around `$.ajax`. It does NOT propagate to plain
 `$.ajax({url, data})` calls without going through MP's wrapper.
 
-We don't need to reverse-engineer the generator. The chosen
-implementation strategy avoids the fingerprint problem entirely (see
-below).
+We don't need to replicate the generator. The chosen implementation strategy lets MP populate this field itself (see below).
 
 ## Architecture decision
 
 **Drive the Creator Studio editor via DOM-level interaction, then
-click MP's own "保存为草稿" button.** This way MP's own save logic
-runs end-to-end, which:
+click MP's own "保存为草稿" button.** MP's own save logic then runs end-to-end, which:
 
 1. Generates `fingerprint` correctly via its internal wrappers
 2. Constructs the full `req` JSON blob (idx_infos, link_info, etc.)
@@ -208,8 +202,9 @@ runs end-to-end, which:
 
 We do NOT manually POST `operate_appmsg` ourselves.
 
-The only programmatic action we take that must look like a real user is
-the **file upload**. We use the `DataTransfer` trick to populate
+The only programmatic action we take that needs special handling is the
+**file upload** — `<input type=file>` only accepts files via the
+operating system's file picker, so a plain DOM `value` set won't work. We use the `DataTransfer` API to populate
 `<input type=file>.files` from a Blob constructed from the local image
 bytes (passed through `eval` as base64). MP's webuploader listens on
 the input's `change` event and triggers its own filetransfer POST —
@@ -225,7 +220,7 @@ again, generating tickets via its internal flow.
      - Decodes base64 → `Uint8Array` → `Blob`
      - Constructs `File` with name + type
      - Finds the right `<input type=file>` (3 candidates on page; 贴图 input is the one with `accept` containing `image`)
-     - Sets `input.files` via `DataTransfer.items.add` + bypass setter
+     - Sets `input.files` via `DataTransfer.items.add` + value setter
      - Dispatches `change` event
    - Wait for upload XHR to complete (capture via interceptor or check for image preview to appear)
 4. **Title** — use `core.browser.type_text("textarea.js_article_title", title)` (real keyboard, dirties React state)

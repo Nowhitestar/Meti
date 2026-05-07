@@ -1,0 +1,47 @@
+name: Feature request
+description: Propose a new capability or platform provider
+title: "[feature] "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion. The bar for new features is roughly: does it make a real publishing workflow noticeably less painful, and does it fit the draft-first design? Provider proposals are especially welcome — see [CONTRIBUTING.md](../CONTRIBUTING.md) for the path.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the workflow pain?
+      description: One paragraph on what you're currently doing manually that you wish was automated.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed shape
+      description: Manifest field, CLI command, or provider name. Sketch only — design discussion happens in the issue thread.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      options:
+        - new platform provider
+        - new manifest field
+        - new CLI subcommand
+        - improvement to existing provider
+        - tooling / CI / docs
+        - other
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What workarounds exist today? Why aren't they enough?
+    validations:
+      required: false

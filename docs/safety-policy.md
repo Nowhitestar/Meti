@@ -1,6 +1,6 @@
 # Safety & Approval Policy
 
-meti will never circumvent platform safeguards or post
+meti will not work around platform safeguards or post
 publicly without explicit confirmation in the active conversation.
 
 ## Defaults
@@ -14,7 +14,7 @@ publicly without explicit confirmation in the active conversation.
 
 1. **No public publish without active confirmation.** Even if the user
    pre-authorized a publish in a prior conversation, ask again on this run.
-2. **No bypass.** Never skip login flows, CAPTCHAs, platform reviews, or
+2. **No skipping required steps.** Never skip login flows, CAPTCHAs, platform reviews, or
    anti-abuse checks. If the browser hits an ambiguous state, stop and ask.
 3. **No secret leakage.** Credentials never appear in:
    - `result.json`

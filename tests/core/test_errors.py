@@ -1,7 +1,7 @@
 from core.errors import (
     ManifestError,
+    MetiError,
     MissingCredentialError,
-    MMPError,
     PlatformRuleViolation,
     ProviderExecutionError,
     ProviderNotFoundError,
@@ -9,11 +9,11 @@ from core.errors import (
 
 
 def test_hierarchy():
-    assert issubclass(ManifestError, MMPError)
-    assert issubclass(ProviderNotFoundError, MMPError)
-    assert issubclass(MissingCredentialError, MMPError)
-    assert issubclass(PlatformRuleViolation, MMPError)
-    assert issubclass(ProviderExecutionError, MMPError)
+    assert issubclass(ManifestError, MetiError)
+    assert issubclass(ProviderNotFoundError, MetiError)
+    assert issubclass(MissingCredentialError, MetiError)
+    assert issubclass(PlatformRuleViolation, MetiError)
+    assert issubclass(ProviderExecutionError, MetiError)
 
 
 def test_provider_execution_error_carries_metadata():

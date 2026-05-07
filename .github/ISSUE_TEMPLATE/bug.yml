@@ -1,0 +1,85 @@
+name: Bug report
+description: Something doesn't work as documented
+title: "[bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Before filing, please redact any tokens, cookies, or AppSecrets from the snippets below — `result.json` and `publish-log.md` already redact secrets, but please double-check.
+
+  - type: textarea
+    id: command
+    attributes:
+      label: What you ran
+      description: The exact `meti ...` command (or wizard prompt) that triggered the issue.
+      placeholder: meti publish examples/longform.yaml --mode-override draft
+      render: bash
+    validations:
+      required: true
+
+  - type: textarea
+    id: manifest
+    attributes:
+      label: Manifest
+      description: The manifest YAML you ran against. Redact any internal URLs / IDs.
+      render: yaml
+    validations:
+      required: false
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected outcome
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual outcome
+      description: Include the relevant lines from `runs/<run-id>/publish-log.md` and `result.json`, plus any tracebacks.
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Meti version
+      description: Output of `meti --version` or the git commit SHA.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Affected provider(s)
+      multiple: true
+      options:
+        - wechat-article
+        - wechat-image
+        - xiaohongshu
+        - x-article
+        - substack
+        - core (no specific provider)
+        - wizard / CLI
+    validations:
+      required: true
+
+  - type: input
+    id: env
+    attributes:
+      label: OS / Python / Node
+      description: e.g. macOS 14.5 / Python 3.12.1 / Node 21.6 (Node only relevant for browser-flow providers)
+    validations:
+      required: true
+
+  - type: textarea
+    id: doctor
+    attributes:
+      label: Diagnostic output
+      description: For browser-flow issues, paste `meti browser doctor` output. For credential issues, paste `meti doctor`.
+      render: text
+    validations:
+      required: false
