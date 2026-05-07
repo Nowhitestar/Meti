@@ -1,27 +1,25 @@
 {
   "name": "meti",
-  "version": "0.2.0",
-  "description": "Cross-platform content publishing orchestration: 小红书 / 微信图文 / 微信公众号文章 / X Articles / Substack. Wizard-driven manifest creation, draft-first safety, encrypted credential vault.",
-  "skills": ["./SKILL.md"],
-  "scripts": {
-    "publish": "scripts/meti.py publish",
-    "validate": "scripts/meti.py validate",
-    "setup": "scripts/meti.py setup",
-    "list": "scripts/meti.py list",
-    "resume": "scripts/meti.py resume",
-    "doctor": "scripts/meti.py doctor",
-    "wizard": "scripts/meti.py wizard"
+  "version": "0.4.0",
+  "description": "One manifest, every Chinese-platform you publish to. Drafts on WeChat OA · Xiaohongshu · X Articles · Substack · WeChat 贴图 from a single YAML.",
+  "author": {
+    "name": "Lewis Liao",
+    "email": "yxliao.lewis@gmail.com",
+    "url": "https://liao.uno"
   },
-  "homepage": "https://github.com/yxliao-lewis/meti",
+  "homepage": "https://liao.uno/meti",
+  "repository": "https://github.com/Nowhitestar/meti",
   "license": "MIT",
   "keywords": [
     "publishing",
     "social-media",
     "xiaohongshu",
     "wechat",
-    "x",
+    "x-articles",
     "substack",
     "claude-code",
-    "openclaw"
+    "openclaw",
+    "manifest-driven",
+    "draft-first"
   ]
 }

@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace",
+  "name": "meti",
+  "owner": {
+    "name": "Lewis Liao",
+    "email": "yxliao.lewis@gmail.com"
+  },
+  "description": "One manifest, every Chinese-platform you publish to.",
+  "plugins": [
+    {
+      "name": "meti",
+      "source": ".",
+      "description": "One manifest → drafts on WeChat OA · Xiaohongshu · X Articles · Substack · WeChat 贴图. Draft-first publishing for the Chinese-platform internet.",
+      "version": "0.4.0",
+      "author": {
+        "name": "Lewis Liao",
+        "url": "https://liao.uno"
+      },
+      "homepage": "https://liao.uno/meti",
+      "repository": "https://github.com/Nowhitestar/meti",
+      "license": "MIT",
+      "keywords": [
+        "publishing",
+        "wechat",
+        "xiaohongshu",
+        "substack",
+        "x-articles",
+        "draft-first"
+      ]
+    }
+  ]
+}
