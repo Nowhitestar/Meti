@@ -17,14 +17,14 @@ verification" for the full list.
   wizard fragments
 - 5 bundled providers: `wechat-article`, `xiaohongshu`, `wechat-image`,
   `x-article`, `substack`
-- `scripts/mmp.py` unified CLI: `validate`, `publish`, `setup`, `list`,
+- `scripts/meti.py` unified CLI: `validate`, `publish`, `setup`, `list`,
   `resume`, `doctor`, `wizard`
 - `.claude-plugin/plugin.json` for Claude Code plugin marketplace
 - 3-stage conversational wizard (source extraction → target selection →
   manifest assembly) + credential setup wizard
 - Manifest schema v0.2: `schema_version`, full-form/short-form targets,
   `defaults` block, `dry-run` mode, account override per target
-- Age-encrypted vault at `~/.config/mmp/credentials.json.age`
+- Age-encrypted vault at `~/.config/meti/credentials.json.age`
 - GitHub Actions CI matrix (macOS + ubuntu × Python 3.10/3.11/3.12)
 - User-facing docs: `architecture.md`, `provider-contract.md`,
   `credentials.md`, `safety-policy.md`, `manual-verification.md`

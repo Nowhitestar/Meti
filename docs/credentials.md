@@ -1,12 +1,12 @@
 # Credentials & Vault
 
-multi-media-publisher stores per-provider credentials in an age-encrypted
+meti stores per-provider credentials in an age-encrypted
 JSON file and never exposes them in result/log/output.
 
 ## File layout
 
 ```
-~/.config/mmp/
+~/.config/meti/
 ├── credentials.json.age            # encrypted vault
 ├── age-key.txt                     # private key (chmod 600)
 ├── providers/                      # user-installed providers (this directory)
@@ -16,7 +16,7 @@ JSON file and never exposes them in result/log/output.
 ## Adding credentials
 
 ```bash
-mmp setup <provider> [--account <name>]
+meti setup <provider> [--account <name>]
 ```
 
 You'll be prompted for each `required_credentials` key declared in that
@@ -25,7 +25,7 @@ provider's `provider.yaml`. Secrets are read via `getpass` (no echo).
 To list what's stored:
 
 ```bash
-mmp list accounts
+meti list accounts
 # wechat-article:default
 # x-article:lewis
 ```
@@ -33,8 +33,8 @@ mmp list accounts
 To delete an account:
 
 ```bash
-mmp setup <provider> --account <name>
-# (re-enter empty values to clear; future: explicit `mmp accounts rm`)
+meti setup <provider> --account <name>
+# (re-enter empty values to clear; future: explicit `meti accounts rm`)
 ```
 
 ## Per-conversation override (ENV)
@@ -43,7 +43,7 @@ Any environment variable matching a `required_credentials.key` overrides the
 vault for that one run:
 
 ```bash
-WECHAT_APP_ID=wx... WECHAT_APP_SECRET=... mmp publish manifest.yaml
+WECHAT_APP_ID=wx... WECHAT_APP_SECRET=... meti publish manifest.yaml
 ```
 
 This is the recommended path for CI and one-off testing.
@@ -65,8 +65,8 @@ targets:
 Compromised vault key:
 
 ```bash
-rm ~/.config/mmp/credentials.json.age ~/.config/mmp/age-key.txt
-mmp setup <each provider>   # re-enter all values
+rm ~/.config/meti/credentials.json.age ~/.config/meti/age-key.txt
+meti setup <each provider>   # re-enter all values
 ```
 
 The new key is auto-generated on first `setup` after deletion.

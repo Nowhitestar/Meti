@@ -10,10 +10,10 @@ FIXTURE = ROOT / "tests" / "fixtures" / "image-post-multi.yaml"
 
 def test_image_post_dry_run_both_targets(tmp_path):
     p = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mmp.py"), "publish", str(FIXTURE)],
+        [sys.executable, str(ROOT / "scripts" / "meti.py"), "publish", str(FIXTURE)],
         capture_output=True,
         text=True,
-        env={**os.environ, "MMP_RUNS_DIR": str(tmp_path / "runs")},
+        env={**os.environ, "METI_RUNS_DIR": str(tmp_path / "runs")},
     )
     assert p.returncode == 0, p.stderr
 

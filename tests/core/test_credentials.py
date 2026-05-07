@@ -8,26 +8,26 @@ from core.errors import MissingCredentialError
 def isolated_vault(monkeypatch, tmp_path):
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.delenv("MMP_VAULT_KEY", raising=False)
+    monkeypatch.delenv("METI_VAULT_KEY", raising=False)
     return tmp_path
 
 
 def test_env_vault_key_overrides_file(monkeypatch, tmp_path):
-    """MMP_VAULT_KEY ENV is the canonical source when set; file is fallback."""
+    """METI_VAULT_KEY ENV is the canonical source when set; file is fallback."""
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setenv("HOME", str(tmp_path))
     # generate a key out-of-band
     import pyrage
 
     identity = pyrage.x25519.Identity.generate()
-    monkeypatch.setenv("MMP_VAULT_KEY", str(identity))
+    monkeypatch.setenv("METI_VAULT_KEY", str(identity))
 
     backend = FileBackend()
     store = CredentialStore(backend=backend)
     store.set("p", "default", {"K": "v"})
 
     # Key file should NOT have been created when ENV is set
-    assert not (tmp_path / ".config" / "mmp" / "age-key.txt").exists()
+    assert not (tmp_path / ".config" / "meti" / "age-key.txt").exists()
 
     # And we can still read back
     assert store.get("p", "default") == {"K": "v"}
@@ -47,7 +47,7 @@ def test_file_backend_persists_encrypted(isolated_vault):
     store = CredentialStore(backend=backend)
     store.set("wechat-article", "default", {"WECHAT_APP_ID": "wx"})
 
-    vault_file = isolated_vault / ".config" / "mmp" / "credentials.json.age"
+    vault_file = isolated_vault / ".config" / "meti" / "credentials.json.age"
     assert vault_file.exists()
     raw = vault_file.read_bytes()
     assert b"WECHAT_APP_ID" not in raw  # encrypted, not visible
@@ -121,7 +121,7 @@ def test_atomic_write_no_zero_byte_on_crash(isolated_vault):
     store = CredentialStore(backend=FileBackend())
     store.set("p", "default", {"K": "original"})
 
-    vault = isolated_vault / ".config" / "mmp" / "credentials.json.age"
+    vault = isolated_vault / ".config" / "meti" / "credentials.json.age"
     original_size = vault.stat().st_size
     original_bytes = vault.read_bytes()
 
@@ -180,8 +180,8 @@ def test_lost_key_with_existing_vault_raises(isolated_vault):
     store = CredentialStore(backend=FileBackend())
     store.set("p", "default", {"K": "v"})
 
-    vault = isolated_vault / ".config" / "mmp" / "credentials.json.age"
-    key_file = isolated_vault / ".config" / "mmp" / "age-key.txt"
+    vault = isolated_vault / ".config" / "meti" / "credentials.json.age"
+    key_file = isolated_vault / ".config" / "meti" / "age-key.txt"
     assert vault.exists()
     assert key_file.exists()
 
@@ -207,8 +207,8 @@ def test_lost_key_with_no_vault_regenerates(isolated_vault):
     # First set creates both key and vault
     store.set("p", "default", {"K": "v"})
 
-    key_file = isolated_vault / ".config" / "mmp" / "age-key.txt"
-    vault = isolated_vault / ".config" / "mmp" / "credentials.json.age"
+    key_file = isolated_vault / ".config" / "meti" / "age-key.txt"
+    vault = isolated_vault / ".config" / "meti" / "credentials.json.age"
     assert key_file.exists()
     assert vault.exists()
 

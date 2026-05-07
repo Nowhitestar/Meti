@@ -18,7 +18,7 @@ Discovery candidates (in order; first match wins):
 1. ``$XHS_DRAFT_SH`` env var (full path to draft.sh)
 2. ``~/.openclaw/workspace/skills/xiaohongshu/scripts/draft.sh`` (workspace install)
 3. ``~/.openclaw/skills/xiaohongshu/scripts/draft.sh`` (legacy install)
-4. ``~/.config/mmp/skills/xiaohongshu/scripts/draft.sh`` (mmp-managed install)
+4. ``~/.config/meti/skills/xiaohongshu/scripts/draft.sh`` (meti-managed install)
 """
 
 from __future__ import annotations
@@ -52,13 +52,13 @@ def _locate_draft_sh() -> Path | None:
     candidates = [
         Path.home() / ".openclaw" / "workspace" / "skills" / "xiaohongshu" / "scripts" / "draft.sh",
         Path.home() / ".openclaw" / "skills" / "xiaohongshu" / "scripts" / "draft.sh",
-        Path.home() / ".config" / "mmp" / "skills" / "xiaohongshu" / "scripts" / "draft.sh",
+        Path.home() / ".config" / "meti" / "skills" / "xiaohongshu" / "scripts" / "draft.sh",
     ]
     return next((c for c in candidates if c.exists()), None)
 
 
 def _build_xhs_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Reshape mmp's payload.json into the JSON draft.sh expects."""
+    """Reshape meti's payload.json into the JSON draft.sh expects."""
     out: dict[str, Any] = {
         "title": payload.get("title", ""),
         "content": payload.get("caption", "") or payload.get("content", ""),

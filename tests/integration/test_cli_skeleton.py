@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 
 def _run(*args, env=None):
     return subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mmp.py"), *args],
+        [sys.executable, str(ROOT / "scripts" / "meti.py"), *args],
         capture_output=True,
         text=True,
         env=env,
@@ -40,7 +40,7 @@ def test_validate_rejects_unsupported_mode(tmp_path):
         encoding="utf-8",
     )
     p = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mmp.py"), "validate", str(src)],
+        [sys.executable, str(ROOT / "scripts" / "meti.py"), "validate", str(src)],
         capture_output=True,
         text=True,
     )

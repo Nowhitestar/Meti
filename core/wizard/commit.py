@@ -15,7 +15,7 @@ def commit_manifest(src_path: str | Path) -> Path:
 
     run = Run.create(
         title=manifest.title,
-        mmp_version=__version__,
+        meti_version=__version__,
         host="wizard",
         mode=manifest.mode,
     )

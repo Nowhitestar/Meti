@@ -1,6 +1,6 @@
 # Safety & Approval Policy
 
-multi-media-publisher will never circumvent platform safeguards or post
+meti will never circumvent platform safeguards or post
 publicly without explicit confirmation in the active conversation.
 
 ## Defaults
@@ -30,18 +30,18 @@ publicly without explicit confirmation in the active conversation.
 
 ## Vault & key rotation
 
-- Vault file: `~/.config/mmp/credentials.json.age` (chmod 600).
-- Vault key: `~/.config/mmp/age-key.txt` (chmod 600).
+- Vault file: `~/.config/meti/credentials.json.age` (chmod 600).
+- Vault key: `~/.config/meti/age-key.txt` (chmod 600).
 - ENV variables override vault for the current session; useful for CI.
 
 To rotate the vault key:
-1. `mmp list accounts` to enumerate
-2. Re-run `mmp setup <provider> --account <a>` for each
+1. `meti list accounts` to enumerate
+2. Re-run `meti setup <provider> --account <a>` for each
 3. Delete the old vault file + age key file
 
 ## Third-party providers
 
-- User-installed providers under `~/.config/mmp/providers/<name>/` are
+- User-installed providers under `~/.config/meti/providers/<name>/` are
   arbitrary Python.
 - v0.2 ProviderRegistry does NOT auto-load user providers — they are detected
   but require explicit `trust_user=True` from the calling host.

@@ -15,7 +15,7 @@ targets:
 
 
 def test_commit_valid(tmp_path, monkeypatch):
-    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
     src = tmp_path / "src.yaml"
     src.write_text(VALID_YAML, encoding="utf-8")
 
@@ -26,7 +26,7 @@ def test_commit_valid(tmp_path, monkeypatch):
 
 
 def test_commit_invalid_raises(tmp_path, monkeypatch):
-    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
     src = tmp_path / "src.yaml"
     src.write_text("not valid yaml: ::", encoding="utf-8")
     with pytest.raises(ManifestError):

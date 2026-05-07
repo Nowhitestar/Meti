@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local smoke test for multi-media-publisher v0.2.
+"""Local smoke test for meti v0.2.
 
 Runs a few CLI flows in a tmp dir and asserts shape. Does NOT call any
 external network.
@@ -22,7 +22,7 @@ def _run_mmp(*args, env_extra: dict | None = None) -> subprocess.CompletedProces
     if env_extra:
         env.update(env_extra)
     return subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mmp.py"), *args],
+        [sys.executable, str(ROOT / "scripts" / "meti.py"), *args],
         capture_output=True,
         text=True,
         env=env,
@@ -35,11 +35,11 @@ def main() -> int:
         ROOT / "tests" / "fixtures" / "image-post-multi.yaml",
         ROOT / "tests" / "fixtures" / "longform-multi.yaml",
     ]
-    with tempfile.TemporaryDirectory(prefix="mmp-smoke-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="meti-smoke-") as tmp:
         tmp_path = Path(tmp)
         runs_dir = tmp_path / "runs"
         env_extra = {
-            "MMP_RUNS_DIR": str(runs_dir),
+            "METI_RUNS_DIR": str(runs_dir),
             "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
         }
 

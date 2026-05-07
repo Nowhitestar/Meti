@@ -10,10 +10,10 @@ FIXTURE = ROOT / "tests" / "fixtures" / "longform-multi.yaml"
 
 def test_longform_multi_dry_run(tmp_path):
     p = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mmp.py"), "publish", str(FIXTURE)],
+        [sys.executable, str(ROOT / "scripts" / "meti.py"), "publish", str(FIXTURE)],
         capture_output=True,
         text=True,
-        env={**os.environ, "MMP_RUNS_DIR": str(tmp_path / "runs")},
+        env={**os.environ, "METI_RUNS_DIR": str(tmp_path / "runs")},
     )
     assert p.returncode == 0, p.stderr
 

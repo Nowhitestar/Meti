@@ -1,7 +1,7 @@
 # Architecture
 
 This is the user-facing architecture summary. The full design spec lives at
-`docs/superpowers/specs/2026-05-05-multi-media-publisher-redesign-design.md`.
+`docs/superpowers/specs/2026-05-05-meti-redesign-design.md`.
 
 ## Three layers
 
@@ -12,11 +12,11 @@ Shell:       SKILL.md  +  .claude-plugin/plugin.json
 Core:        core/    (host-agnostic Python)
               │
               ▼
-Providers:   providers/<name>/  +  ~/.config/mmp/providers/<name>/
+Providers:   providers/<name>/  +  ~/.config/meti/providers/<name>/
 ```
 
 - **Shell** is what Claude Code or OpenClaw load to know this skill exists.
-  It declares triggers and points at `scripts/mmp.py`.
+  It declares triggers and points at `scripts/meti.py`.
 - **Core** is `core/manifest.py`, `core/provider.py`, `core/credentials.py`,
   `core/run.py`, `core/rules.py`, `core/host.py`, `core/errors.py`,
   `core/wizard/`, `core/settings.py`. Nothing in core depends on a host.
@@ -55,7 +55,7 @@ metadata: {}
 ## Run lifecycle
 
 ```
-mmp publish manifest.yaml
+meti publish manifest.yaml
   → load + validate manifest
   → create runs/<ts>-<slug>/ + manifest.lock.json
   → for each target:
@@ -70,6 +70,6 @@ mmp publish manifest.yaml
 ## Why this shape
 
 - One manifest, many providers — adding a platform is one directory, not six edits.
-- Core is host-agnostic — same code works in Claude Code, OpenClaw, or `python3 mmp.py`.
+- Core is host-agnostic — same code works in Claude Code, OpenClaw, or `python3 meti.py`.
 - draft-first — capabilities default to draft only; publish requires explicit opt-in.
-- Vault is shared across hosts — `~/.config/mmp/` is a single source of truth.
+- Vault is shared across hosts — `~/.config/meti/` is a single source of truth.

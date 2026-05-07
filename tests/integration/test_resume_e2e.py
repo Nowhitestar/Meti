@@ -1,4 +1,4 @@
-"""Integration tests for `mmp resume <run-dir>`.
+"""Integration tests for `meti resume <run-dir>`.
 
 v0.3 P1a: target-level resume. Re-runs prepare+execute for any target
 whose previous status != ok.
@@ -21,7 +21,7 @@ def _run_mmp(*args, env_extra=None):
     if env_extra:
         env.update(env_extra)
     return subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mmp.py"), *args],
+        [sys.executable, str(ROOT / "scripts" / "meti.py"), *args],
         capture_output=True,
         text=True,
         env=env,
@@ -35,7 +35,7 @@ def test_resume_skips_ok_targets_reruns_failed(tmp_path):
     p = _run_mmp(
         "publish",
         str(FIXTURE),
-        env_extra={"MMP_RUNS_DIR": str(tmp_path / "runs")},
+        env_extra={"METI_RUNS_DIR": str(tmp_path / "runs")},
     )
     assert p.returncode == 0, p.stderr
     runs = list((tmp_path / "runs").iterdir())
@@ -54,7 +54,7 @@ def test_resume_skips_ok_targets_reruns_failed(tmp_path):
     p = _run_mmp(
         "resume",
         str(rd),
-        env_extra={"MMP_RUNS_DIR": str(tmp_path / "runs")},
+        env_extra={"METI_RUNS_DIR": str(tmp_path / "runs")},
     )
     assert p.returncode == 0, p.stderr
 
@@ -79,11 +79,11 @@ def test_resume_skips_ok_targets_reruns_failed(tmp_path):
 
 
 def test_resume_target_filter_only_reruns_chosen(tmp_path):
-    """`mmp resume <dir> --target X` should only touch target X."""
+    """`meti resume <dir> --target X` should only touch target X."""
     p = _run_mmp(
         "publish",
         str(FIXTURE),
-        env_extra={"MMP_RUNS_DIR": str(tmp_path / "runs")},
+        env_extra={"METI_RUNS_DIR": str(tmp_path / "runs")},
     )
     assert p.returncode == 0
     rd = next((tmp_path / "runs").iterdir())
@@ -101,7 +101,7 @@ def test_resume_target_filter_only_reruns_chosen(tmp_path):
         str(rd),
         "--target",
         "x-article",
-        env_extra={"MMP_RUNS_DIR": str(tmp_path / "runs")},
+        env_extra={"METI_RUNS_DIR": str(tmp_path / "runs")},
     )
     assert p.returncode == 0, p.stderr
 

@@ -13,8 +13,8 @@ def test_slugify_basic():
 
 
 def test_run_create_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
-    r = Run.create(title="Hello", mmp_version="0.2.0", host="claude-code", mode="draft")
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
+    r = Run.create(title="Hello", meti_version="0.2.0", host="claude-code", mode="draft")
     assert r.dir.exists()
     assert (r.dir / "packs").exists()
     assert (r.dir / "checkpoints").exists()
@@ -23,8 +23,8 @@ def test_run_create_dir(tmp_path, monkeypatch):
 
 
 def test_result_serialization(tmp_path, monkeypatch):
-    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
-    r = Run.create(title="X", mmp_version="0.2.0", host="cc", mode="draft")
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
+    r = Run.create(title="X", meti_version="0.2.0", host="cc", mode="draft")
     r.add_target_result(
         name="wechat-article",
         account="default",
@@ -42,8 +42,8 @@ def test_result_serialization(tmp_path, monkeypatch):
 
 
 def test_log_append(tmp_path, monkeypatch):
-    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
-    r = Run.create(title="X", mmp_version="0.2.0", host="cc", mode="draft")
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
+    r = Run.create(title="X", meti_version="0.2.0", host="cc", mode="draft")
     r.log("RUN_START", run_id=r.run_id)
     r.log("PREPARE_OK", target="wechat-article")
     text = (r.dir / "publish-log.md").read_text()
@@ -52,8 +52,8 @@ def test_log_append(tmp_path, monkeypatch):
 
 
 def test_checkpoint_write_read(tmp_path, monkeypatch):
-    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
-    r = Run.create(title="X", mmp_version="0.2.0", host="cc", mode="draft")
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
+    r = Run.create(title="X", meti_version="0.2.0", host="cc", mode="draft")
     r.checkpoint("wechat-article", step="thumb_uploaded", external_ids={"thumb_id": "t1"})
     cp = r.read_checkpoint("wechat-article")
     assert cp["step"] == "thumb_uploaded"
@@ -61,8 +61,8 @@ def test_checkpoint_write_read(tmp_path, monkeypatch):
 
 
 def test_resume_loads_existing_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
-    r = Run.create(title="Y", mmp_version="0.2.0", host="cc", mode="draft")
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
+    r = Run.create(title="Y", meti_version="0.2.0", host="cc", mode="draft")
     r.checkpoint("x-article", step="prepared")
     run_dir = r.dir
 
@@ -72,9 +72,9 @@ def test_resume_loads_existing_dir(tmp_path, monkeypatch):
 
 
 def test_run_create_avoids_collision(tmp_path, monkeypatch):
-    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
-    r1 = Run.create(title="Same", mmp_version="0.2.0", host="cc", mode="draft")
-    r2 = Run.create(title="Same", mmp_version="0.2.0", host="cc", mode="draft")
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
+    r1 = Run.create(title="Same", meti_version="0.2.0", host="cc", mode="draft")
+    r2 = Run.create(title="Same", meti_version="0.2.0", host="cc", mode="draft")
     assert r1.dir != r2.dir
     assert r1.run_id != r2.run_id
     # Second one should have a -2 suffix
@@ -84,8 +84,8 @@ def test_run_create_avoids_collision(tmp_path, monkeypatch):
 def test_finalize_with_no_targets(tmp_path, monkeypatch):
     import json
 
-    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
-    r = Run.create(title="Empty", mmp_version="0.2.0", host="cc", mode="dry-run")
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
+    r = Run.create(title="Empty", meti_version="0.2.0", host="cc", mode="dry-run")
     r.finalize()
     log = (r.dir / "publish-log.md").read_text()
     assert "RUN_DONE" in log

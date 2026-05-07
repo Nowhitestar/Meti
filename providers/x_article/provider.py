@@ -2,7 +2,7 @@
 
 Two execute paths:
 - **Browser flow** (preferred, v0.3.1+): if Playwright is installed AND a
-  saved browser session exists (run ``mmp browser login x-article`` once),
+  saved browser session exists (run ``meti browser login x-article`` once),
   drives Chromium to create a real draft on x.com/i/articles. Returns
   ``mode_actual="draft-platform"`` with the article ID as ``external_id``.
 - **Stub fallback**: if either prerequisite is missing, writes a
@@ -35,7 +35,7 @@ class XArticleProvider(Provider):
     media_types = ["longform"]
     capabilities = {"draft": True, "publish": False, "schedule": False}
     # Browser-flow provider: no API credentials. Auth is via saved
-    # browser state captured by `mmp browser login x-article`.
+    # browser state captured by `meti browser login x-article`.
     required_credentials: list[CredentialSpec] = []
     platform_rules = X_ARTICLE_RULES
     browser_login_url = "https://x.com/i/flow/login"
@@ -144,8 +144,8 @@ class XArticleProvider(Provider):
             "2. Install the Chrome extension:\n"
             "   https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk\n"
             "3. Make sure you're logged in to X in Chrome\n"
-            "4. Verify: `mmp browser status`\n"
-            "5. Retry: `mmp resume <this-run-dir>`\n\n"
+            "4. Verify: `meti browser status`\n"
+            "5. Retry: `meti resume <this-run-dir>`\n\n"
             "Setup details: docs/browser-connectors.md\n\n"
             "**Option B: manually create the draft**\n\n"
             "1. Open https://x.com/i/articles/compose in a logged-in browser\n"

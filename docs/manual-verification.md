@@ -13,13 +13,13 @@ Prerequisites:
 Steps:
 
 ```bash
-mmp setup wechat-article
+meti setup wechat-article
 # Enter WECHAT_APP_ID and WECHAT_APP_SECRET when prompted
-mmp doctor
+meti doctor
 # Expect: providers >= 5; accounts: wechat-article:default
-mmp publish examples/longform.yaml --mode-override dry-run
+meti publish examples/longform.yaml --mode-override dry-run
 # Expect: RUN_DIR <path>; result.json status=ok mode_actual=dry-run
-mmp publish examples/longform.yaml --mode-override draft
+meti publish examples/longform.yaml --mode-override draft
 # Expect: status=ok, mode_actual=draft-platform, external_id is a draft media_id
 # Verify: log into mp.weixin.qq.com → 草稿箱 → see the new draft
 ```
@@ -33,9 +33,9 @@ Prerequisites:
 - `XHS_COOKIE_PATH` set in vault to that cookie file
 
 ```bash
-mmp setup xiaohongshu
-mmp publish examples/image-post.yaml --mode-override dry-run
-mmp publish examples/image-post.yaml --mode-override draft
+meti setup xiaohongshu
+meti publish examples/image-post.yaml --mode-override dry-run
+meti publish examples/image-post.yaml --mode-override draft
 # Expect: result.json mode_actual=draft-local
 # Verify: <draft_path> file exists and contains the payload
 ```
@@ -43,7 +43,7 @@ mmp publish examples/image-post.yaml --mode-override draft
 ## wechat-image
 
 ```bash
-mmp publish examples/image-post.yaml --mode-override draft
+meti publish examples/image-post.yaml --mode-override draft
 # Expect: <run-dir>/packs/wechat-image/browser-flow.md exists
 # Verify: open the guide manually, confirm steps are accurate
 ```
@@ -51,7 +51,7 @@ mmp publish examples/image-post.yaml --mode-override draft
 ## x-article
 
 ```bash
-mmp publish examples/longform.yaml --mode-override draft
+meti publish examples/longform.yaml --mode-override draft
 # Expect: result.json connector_status=not-implemented
 # Manually follow the TODO-connector.md to create a draft
 # Verify: x.com/i/articles → drafts shows the new entry
@@ -67,9 +67,9 @@ Verify the same vault works from both hosts:
 
 ```bash
 # In Claude Code:
-python3 scripts/mmp.py list accounts
+python3 scripts/meti.py list accounts
 # In OpenClaw:
-python3 scripts/mmp.py list accounts
+python3 scripts/meti.py list accounts
 # Both should show identical accounts.
 ```
 

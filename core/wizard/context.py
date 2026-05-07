@@ -1,6 +1,6 @@
 """Build a JSON context object describing current wizard state.
 
-Claude reads this (via `mmp wizard --dump-context`) to know which providers
+Claude reads this (via `meti wizard --dump-context`) to know which providers
 are available, which accounts have credentials, and what the user's settings
 say. The context is the bridge between Python state and Claude conversation.
 """
@@ -39,7 +39,7 @@ def build_context(
     reg = ProviderRegistry(bundled_dir=bundled_dir, user_dir=user_dir)
     s = settings_mod.load()
     # TODO(plan-4): pass trust_user from settings.trusted_user_providers
-    # to enable third-party providers from ~/.config/mmp/providers/.
+    # to enable third-party providers from ~/.config/meti/providers/.
     reg.discover(trust_user=False)
 
     store = CredentialStore()

@@ -12,7 +12,7 @@ def _run(*args, env_extra=None):
     if env_extra:
         env.update(env_extra)
     return subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mmp.py"), *args],
+        [sys.executable, str(ROOT / "scripts" / "meti.py"), *args],
         capture_output=True,
         text=True,
         env=env,
@@ -24,7 +24,7 @@ def test_dump_context_returns_json(tmp_path):
         "wizard",
         "--dump-context",
         env_extra={
-            "MMP_RUNS_DIR": str(tmp_path / "runs"),
+            "METI_RUNS_DIR": str(tmp_path / "runs"),
             "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
         },
     )
@@ -42,7 +42,7 @@ def test_dump_context_filters_by_type(tmp_path):
         "--type",
         "longform",
         env_extra={
-            "MMP_RUNS_DIR": str(tmp_path / "runs"),
+            "METI_RUNS_DIR": str(tmp_path / "runs"),
             "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
         },
     )
@@ -68,7 +68,7 @@ def test_commit_writes_run_dir(tmp_path):
         "--commit",
         str(src),
         env_extra={
-            "MMP_RUNS_DIR": str(tmp_path / "runs"),
+            "METI_RUNS_DIR": str(tmp_path / "runs"),
             "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
         },
     )

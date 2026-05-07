@@ -114,7 +114,7 @@ def test_health_check_reflects_bridge_connectivity(article):
 
 
 def test_browser_login_url_is_set():
-    """browser_login_url is what `mmp browser login x-article` will navigate to."""
+    """browser_login_url is what `meti browser login x-article` will navigate to."""
     p = XArticleProvider()
     assert p.browser_login_url == "https://x.com/i/flow/login"
 

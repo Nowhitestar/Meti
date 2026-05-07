@@ -12,13 +12,13 @@ import warnings
 
 def main() -> int:
     warnings.warn(
-        "scripts/wechat_api_draft.py is deprecated; use `mmp publish` or "
+        "scripts/wechat_api_draft.py is deprecated; use `meti publish` or "
         "`providers.wechat_article.internal.wechat_api`",
         DeprecationWarning,
         stacklevel=2,
     )
     print(
-        "DEPRECATED. Use `python3 scripts/mmp.py publish <manifest>` instead.",
+        "DEPRECATED. Use `python3 scripts/meti.py publish <manifest>` instead.",
         file=sys.stderr,
     )
     return 1

@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""multi-media-publisher unified CLI entry.
+"""Meti unified CLI entry.
 
 Subcommands: validate, publish, setup, list, resume, doctor, wizard.
-The wizard subcommand is implemented in Plan 2.
 """
 
 from __future__ import annotations
@@ -17,7 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(prog="mmp", description="multi-media-publisher CLI")
+    p = argparse.ArgumentParser(prog="meti", description="Meti — one manifest, every platform")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     sub_validate = sub.add_parser("validate", help="Validate a manifest without executing")
@@ -54,7 +53,7 @@ def _build_parser() -> argparse.ArgumentParser:
         choices=["status", "login", "doctor"],
         help="status: extension connectivity check; "
         "login: open provider's login URL in your Chrome (informational only — "
-        "your Chrome session is what mmp drives); "
+        "your Chrome session is what meti drives); "
         "doctor: full opencli diagnostic",
     )
     sub_browser.add_argument(
@@ -148,7 +147,7 @@ def cmd_publish(args: argparse.Namespace) -> int:
         reg.discover()
         store = CredentialStore()
 
-        run = Run.create(title=m.title, mmp_version=__version__, host="cli", mode=m.mode)
+        run = Run.create(title=m.title, meti_version=__version__, host="cli", mode=m.mode)
         # Write a self-contained manifest: inline the body so the run dir
         # doesn't depend on the source dir for resume / forensics.
         import yaml as _yaml
@@ -476,9 +475,9 @@ def cmd_wizard(args: argparse.Namespace) -> int:
 def cmd_browser(args: argparse.Namespace) -> int:
     """Browser bridge status & login pointer.
 
-    The OpenCLI Chrome extension drives the user's real Chrome, so mmp
+    The OpenCLI Chrome extension drives the user's real Chrome, so meti
     no longer manages session state. ``login`` just navigates to the
-    provider's login URL — the user logs in normally in Chrome, mmp
+    provider's login URL — the user logs in normally in Chrome, meti
     detects logged-in state via the extension on subsequent runs.
     """
     from core import browser as br
@@ -525,7 +524,7 @@ def cmd_browser(args: argparse.Namespace) -> int:
 
     if action == "login":
         if not args.provider:
-            print("ERROR  `mmp browser login` requires a provider name", file=sys.stderr)
+            print("ERROR  `meti browser login` requires a provider name", file=sys.stderr)
             return 2
         reg = ProviderRegistry()
         reg.discover()
@@ -549,7 +548,7 @@ def cmd_browser(args: argparse.Namespace) -> int:
             return 2
         print(f"OK  Opened {login_url} in your Chrome.")
         print(
-            "  Log in normally if you aren't already. mmp uses your real Chrome\n"
+            "  Log in normally if you aren't already. meti uses your real Chrome\n"
             "  session; no separate state to manage."
         )
         return 0

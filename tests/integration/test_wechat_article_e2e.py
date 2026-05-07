@@ -8,13 +8,13 @@ FIXTURE = ROOT / "tests" / "fixtures" / "wechat-article-e2e.yaml"
 
 
 def test_publish_dry_run_creates_run_dir(tmp_path, monkeypatch):
-    monkeypatch.setenv("MMP_RUNS_DIR", str(tmp_path / "runs"))
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
 
     p = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mmp.py"), "publish", str(FIXTURE)],
+        [sys.executable, str(ROOT / "scripts" / "meti.py"), "publish", str(FIXTURE)],
         capture_output=True,
         text=True,
-        env={**__import__("os").environ, "MMP_RUNS_DIR": str(tmp_path / "runs")},
+        env={**__import__("os").environ, "METI_RUNS_DIR": str(tmp_path / "runs")},
     )
     assert p.returncode == 0, p.stderr
 
@@ -37,7 +37,7 @@ def test_publish_dry_run_creates_run_dir(tmp_path, monkeypatch):
 
 def test_validate_subcommand(tmp_path):
     p = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mmp.py"), "validate", str(FIXTURE)],
+        [sys.executable, str(ROOT / "scripts" / "meti.py"), "validate", str(FIXTURE)],
         capture_output=True,
         text=True,
     )
@@ -47,10 +47,10 @@ def test_validate_subcommand(tmp_path):
 
 def test_run_dir_is_self_contained(tmp_path):
     p = subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mmp.py"), "publish", str(FIXTURE)],
+        [sys.executable, str(ROOT / "scripts" / "meti.py"), "publish", str(FIXTURE)],
         capture_output=True,
         text=True,
-        env={**__import__("os").environ, "MMP_RUNS_DIR": str(tmp_path / "runs")},
+        env={**__import__("os").environ, "METI_RUNS_DIR": str(tmp_path / "runs")},
     )
     assert p.returncode == 0, p.stderr
 

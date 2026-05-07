@@ -6,7 +6,7 @@ implements the `Provider` ABC.
 ## Where it lives
 
 - **Bundled** (first-party): `providers/<snake_name>/`
-- **User** (third-party): `~/.config/mmp/providers/<snake_name>/`
+- **User** (third-party): `~/.config/meti/providers/<snake_name>/`
 
 The directory name uses snake_case (Python module name). The
 `provider.yaml.name` is the kebab-case identifier referenced in manifests
@@ -87,11 +87,11 @@ class MyPlatformProvider(Provider):
 
 Wrap upstream failures in `ProviderExecutionError(target=..., step=...,
 upstream=exc, retryable=True/False)`. The framework writes a checkpoint and
-allows `mmp resume`.
+allows `meti resume`.
 
 ### `health_check(credentials) -> HealthStatus`
 
-Return `HealthStatus.ok | failed | unknown`. Used by `mmp doctor` and the
+Return `HealthStatus.ok | failed | unknown`. Used by `meti doctor` and the
 wizard to surface "your token works" before a run starts.
 
 ## `rules.py`
@@ -113,7 +113,7 @@ MY_RULES = PlatformRules(
 
 ## Trust model for user-installed providers
 
-User providers under `~/.config/mmp/providers/` are not loaded automatically
+User providers under `~/.config/meti/providers/` are not loaded automatically
 in v0.2. The `ProviderRegistry.discover()` defaults to `trust_user=False`,
 so user folders are detected but skipped.
 

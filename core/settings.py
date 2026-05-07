@@ -1,4 +1,4 @@
-"""Settings persistence at ~/.config/mmp/settings.toml.
+"""Settings persistence at ~/.config/meti/settings.toml.
 
 Defaults are returned when the file is missing; save() writes back the full
 settings object.

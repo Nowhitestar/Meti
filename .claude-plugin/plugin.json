@@ -1,18 +1,18 @@
 {
-  "name": "multi-media-publisher",
+  "name": "meti",
   "version": "0.2.0",
   "description": "Cross-platform content publishing orchestration: 小红书 / 微信图文 / 微信公众号文章 / X Articles / Substack. Wizard-driven manifest creation, draft-first safety, encrypted credential vault.",
   "skills": ["./SKILL.md"],
   "scripts": {
-    "publish": "scripts/mmp.py publish",
-    "validate": "scripts/mmp.py validate",
-    "setup": "scripts/mmp.py setup",
-    "list": "scripts/mmp.py list",
-    "resume": "scripts/mmp.py resume",
-    "doctor": "scripts/mmp.py doctor",
-    "wizard": "scripts/mmp.py wizard"
+    "publish": "scripts/meti.py publish",
+    "validate": "scripts/meti.py validate",
+    "setup": "scripts/meti.py setup",
+    "list": "scripts/meti.py list",
+    "resume": "scripts/meti.py resume",
+    "doctor": "scripts/meti.py doctor",
+    "wizard": "scripts/meti.py wizard"
   },
-  "homepage": "https://github.com/yxliao-lewis/multi-media-publisher",
+  "homepage": "https://github.com/yxliao-lewis/meti",
   "license": "MIT",
   "keywords": [
     "publishing",

@@ -81,7 +81,7 @@ class Provider(ABC):
     platform_rules: PlatformRules
 
     # Optional. Set this on providers that authenticate via a browser session
-    # (saved cookies/storage). When set, `mmp browser login <name>` will open
+    # (saved cookies/storage). When set, `meti browser login <name>` will open
     # this URL in a headed browser and save state via core.browser.
     # Example: "https://x.com/i/flow/login"
     browser_login_url: str | None = None

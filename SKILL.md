@@ -18,10 +18,10 @@ safety policy, and per-platform rules.
 
 ## Entry point
 
-All operations go through `scripts/mmp.py`:
+All operations go through `scripts/meti.py`:
 
 ```bash
-python3 scripts/mmp.py <subcommand> [args]
+python3 scripts/meti.py <subcommand> [args]
 ```
 
 Subcommands:
@@ -50,15 +50,15 @@ asking them to write a manifest:
    `images`, `tags`, `cta` into your conversation memory. Don't write files yet.
 
 2. **Stage 2 — Target Selection**: read `core/wizard/target_selection.md`. Run
-   `python3 scripts/mmp.py wizard --dump-context --type <T>` to fetch available
+   `python3 scripts/meti.py wizard --dump-context --type <T>` to fetch available
    providers + credential status + accounts. Ask which targets, modes, accounts.
 
 3. **Stage 3 — Manifest Assembly**: read `core/wizard/manifest_assembly.md`.
-   Render YAML, write to a temp file, validate via `python3 scripts/mmp.py validate`,
-   show the user, get approval. On approve, run `python3 scripts/mmp.py wizard --commit <path>`.
+   Render YAML, write to a temp file, validate via `python3 scripts/meti.py validate`,
+   show the user, get approval. On approve, run `python3 scripts/meti.py wizard --commit <path>`.
 
 For setup credentials flows ("配置凭证", "setup wechat-article account"), read
-`core/wizard/credential_setup.md`. Direct the user to run `mmp setup <provider>`
+`core/wizard/credential_setup.md`. Direct the user to run `meti setup <provider>`
 locally — never ask them to paste a secret into chat unless they insist.
 
 ## Public-publish Gate
@@ -92,27 +92,27 @@ ask in the active conversation.
 
 ## Architecture
 
-See `docs/superpowers/specs/2026-05-05-multi-media-publisher-redesign-design.md`
+See `docs/superpowers/specs/2026-05-05-meti-redesign-design.md`
 for the full architecture spec. In short:
 
 - **Shell**: this SKILL.md + `.claude-plugin/plugin.json`
 - **Core**: `core/` — host-agnostic Python (manifest, provider registry, vault, run lifecycle)
-- **Providers**: `providers/<name>/` (bundled) + `~/.config/mmp/providers/<name>/` (user)
+- **Providers**: `providers/<name>/` (bundled) + `~/.config/meti/providers/<name>/` (user)
 
 ## Quickstart
 
 ```bash
 # 1. Validate
-python3 scripts/mmp.py validate examples/longform.yaml
+python3 scripts/meti.py validate examples/longform.yaml
 
 # 2. Configure WeChat credentials
-python3 scripts/mmp.py setup wechat-article
+python3 scripts/meti.py setup wechat-article
 
 # 3. Dry-run
-python3 scripts/mmp.py publish examples/longform.yaml --mode-override dry-run
+python3 scripts/meti.py publish examples/longform.yaml --mode-override dry-run
 
 # 4. Inspect runs
-python3 scripts/mmp.py list runs
+python3 scripts/meti.py list runs
 ```
 
 ## Bundled resources
@@ -121,5 +121,5 @@ python3 scripts/mmp.py list runs
 - `providers/wechat_article/` — first-party WeChat OA article provider
 - `examples/longform.yaml` — sample manifest
 - `docs/HANDOFF.md` — historical state notes
-- `docs/superpowers/specs/2026-05-05-multi-media-publisher-redesign-design.md` — v0.2 design spec
+- `docs/superpowers/specs/2026-05-05-meti-redesign-design.md` — v0.2 design spec
 - `docs/superpowers/plans/` — v0.2 implementation plans (historical)

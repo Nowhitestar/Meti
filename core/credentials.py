@@ -55,14 +55,17 @@ def _read_or_create_key(
     """Return (identity, recipient).
 
     Priority:
-      1. ENV MMP_VAULT_KEY (canonical for CI / one-shot use)
+      1. ENV METI_VAULT_KEY (canonical for CI / one-shot use), with
+         MMP_VAULT_KEY accepted as a deprecated fallback for one release
       2. existing key file at key_path
       3. generate a new key file — but ONLY when no encrypted vault exists.
          If ``vault_path`` is provided and points at an existing encrypted
          file, refuse to regenerate (would silently brick the vault) and
          raise ``VaultIntegrityError`` instead.
     """
-    env_key = os.environ.get("MMP_VAULT_KEY", "").strip()
+    from core.host import _env_with_legacy
+
+    env_key = (_env_with_legacy("METI_VAULT_KEY", "MMP_VAULT_KEY") or "").strip()
     if env_key:
         identity = pyrage.x25519.Identity.from_str(env_key)
         return identity, identity.to_public()

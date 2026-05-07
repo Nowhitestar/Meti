@@ -1,4 +1,4 @@
-"""Integration tests for `mmp browser` subcommand (OpenCLI-backed)."""
+"""Integration tests for `meti browser` subcommand (OpenCLI-backed)."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def _run(*args, env_extra=None):
     if env_extra:
         env.update(env_extra)
     return subprocess.run(
-        [sys.executable, str(ROOT / "scripts" / "mmp.py"), *args],
+        [sys.executable, str(ROOT / "scripts" / "meti.py"), *args],
         capture_output=True,
         text=True,
         env=env,

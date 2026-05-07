@@ -13,7 +13,7 @@ in mainland-blocked regions) hit two problems:
 3. **50-IP whitelist ceiling** — every band-aid IP eventually fills the slot.
 
 Solution: route all WeChat API calls through a static-IP bastion. Set
-`WECHAT_API_PROXY` to point at the bastion; mmp will rewrite all
+`WECHAT_API_PROXY` to point at the bastion; meti will rewrite all
 `api.weixin.qq.com/cgi-bin/*` calls to `<your-bastion>/cgi-bin/*`.
 
 ## Setup
@@ -53,17 +53,17 @@ For Cloudflare Workers, see
 <https://www.cloudflare.com/ips/> for the egress IP ranges. They publish
 both IPv4 and IPv6 ranges; whitelist all the IPv4 ranges you'll be using.
 
-### 4. Configure mmp
+### 4. Configure meti
 
 ```bash
 export WECHAT_API_PROXY="https://my-bastion.example.com"
-mmp publish examples/longform.yaml --mode-override draft
+meti publish examples/longform.yaml --mode-override draft
 ```
 
 Or persist for an account:
 
 ```bash
-mmp setup wechat-article
+meti setup wechat-article
 # When prompted, instead of just AppID/Secret, also include
 # WECHAT_API_PROXY at the top of your shell profile or env file.
 ```
@@ -145,7 +145,7 @@ Set `WECHAT_API_PROXY=https://wechat-api-proxy.<your-subdomain>.workers.dev`.
   free tier has 100k req/day default cap, which is plenty for personal use.
   If exposing to multiple users, add a `WECHAT_PROXY_KEY` header check at
   the worker (and a matching `headers={"X-Proxy-Key": "..."}` injection at
-  the mmp side — currently not supported but easy v0.3.x add).
+  the meti side — currently not supported but easy v0.3.x add).
 - **Cloudflare logs request paths and metadata** by default. If WeChat
   paths leak any sensitive info beyond `/cgi-bin/<endpoint>` shape, this
   matters. Audit your CF account's request logging settings before
@@ -162,7 +162,7 @@ the proxy will pass.
 ### `errcode: 40001 invalid credential`
 
 The proxy is forwarding correctly but your AppID/AppSecret are wrong.
-Re-run `mmp setup wechat-article`.
+Re-run `meti setup wechat-article`.
 
 ### Proxy works for `get_access_token` but not `add_draft`
 
@@ -178,7 +178,7 @@ After setup:
 
 ```bash
 # Should hit your proxy, then proxy hits WeChat.
-WECHAT_API_PROXY=https://your-proxy.example.com mmp publish \
+WECHAT_API_PROXY=https://your-proxy.example.com meti publish \
   examples/longform.yaml --mode-override draft
 ```
 
@@ -188,8 +188,8 @@ the proxy's IP added.
 
 ## Related v0.3 work
 
-- `mmp setup wechat-article` could prompt for `WECHAT_API_PROXY` and store
-  it in `~/.config/mmp/settings.toml` (currently env-only)
-- Health-check: `mmp doctor` could ping `<proxy>/cgi-bin/token` with a
+- `meti setup wechat-article` could prompt for `WECHAT_API_PROXY` and store
+  it in `~/.config/meti/settings.toml` (currently env-only)
+- Health-check: `meti doctor` could ping `<proxy>/cgi-bin/token` with a
   malformed AppID and confirm the proxy returns WeChat's `errcode: 40013`
   (proves end-to-end connectivity without needing real creds)

@@ -32,4 +32,4 @@ def test_set_and_reload(isolated):
 def test_settings_file_path(isolated):
     s = settings.load()
     settings.save(s)
-    assert (isolated / ".config" / "mmp" / "settings.toml").exists()
+    assert (isolated / ".config" / "meti" / "settings.toml").exists()

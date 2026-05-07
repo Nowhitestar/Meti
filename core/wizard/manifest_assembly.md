@@ -6,9 +6,9 @@ manifest, validate it, get user approval, and persist.
 ## Goal of this stage
 
 1. Render `manifest.yaml` from collected info.
-2. Validate via `python3 scripts/mmp.py validate <tmp>`.
+2. Validate via `python3 scripts/meti.py validate <tmp>`.
 3. Show the user the rendered YAML AND the violation report.
-4. On approval, commit via `python3 scripts/mmp.py wizard --commit <path>`.
+4. On approval, commit via `python3 scripts/meti.py wizard --commit <path>`.
 
 ## Render rules
 
@@ -32,7 +32,7 @@ manifest, validate it, get user approval, and persist.
 2. Run validate:
 
    ```bash
-   python3 scripts/mmp.py validate "$tmp"
+   python3 scripts/meti.py validate "$tmp"
    ```
 
 3. Parse the output:
@@ -75,7 +75,7 @@ safety and inform the user.
 ## Commit
 
 ```bash
-python3 scripts/mmp.py wizard --commit /tmp/manifest.yaml
+python3 scripts/meti.py wizard --commit /tmp/manifest.yaml
 ```
 
 The CLI prints `RUN_DIR <path>`. The manifest is now at `<RUN_DIR>/manifest.yaml`
@@ -86,5 +86,5 @@ and a `manifest.lock.json` is generated.
 Tell the user the run dir and ask whether to also execute now:
 
 > Manifest ready at `<RUN_DIR>/manifest.yaml`. Execute now?
->   yes    → run `mmp publish <RUN_DIR>/manifest.yaml`
->   later  → I'll stop here; run `mmp publish` when you're ready.
+>   yes    → run `meti publish <RUN_DIR>/manifest.yaml`
+>   later  → I'll stop here; run `meti publish` when you're ready.

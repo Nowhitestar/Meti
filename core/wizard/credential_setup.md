@@ -6,7 +6,7 @@ Triggered when:
 
 ## Goal
 
-Populate `~/.config/mmp/credentials.json.age` with the keys the chosen
+Populate `~/.config/meti/credentials.json.age` with the keys the chosen
 provider's `required_credentials` list. ENV variables override vault for
 the current session.
 
@@ -19,7 +19,7 @@ the current session.
 2. **Show what's needed**: run
 
    ```bash
-   python3 scripts/mmp.py wizard --dump-context | jq '.providers[] | select(.name=="<NAME>")'
+   python3 scripts/meti.py wizard --dump-context | jq '.providers[] | select(.name=="<NAME>")'
    ```
 
    List each `required_credentials` entry with its `description` and `setup_hint`.
@@ -31,7 +31,7 @@ the current session.
 4. **Persist** by running:
 
    ```bash
-   python3 scripts/mmp.py setup <provider> --account <account>
+   python3 scripts/meti.py setup <provider> --account <account>
    ```
 
    This subcommand prompts via stdin/getpass for each key. **Tell the user this
@@ -42,13 +42,13 @@ the current session.
 
    ```bash
    WECHAT_APP_ID=wx... WECHAT_APP_SECRET=... \
-     python3 scripts/mmp.py publish manifest.yaml
+     python3 scripts/meti.py publish manifest.yaml
    ```
 
 5. **Verify**: run
 
    ```bash
-   python3 scripts/mmp.py doctor
+   python3 scripts/meti.py doctor
    ```
 
    Confirm the account appears in `accounts:` count.

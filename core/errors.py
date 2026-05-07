@@ -1,10 +1,10 @@
-"""Exception hierarchy for multi-media-publisher core."""
+"""Exception hierarchy for meti core."""
 
 from __future__ import annotations
 
 
 class MMPError(Exception):
-    """Base class for all multi-media-publisher errors."""
+    """Base class for all meti errors."""
 
 
 class ManifestError(MMPError):

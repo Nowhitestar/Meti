@@ -1,6 +1,6 @@
 # Browser-flow connectors (v0.3.1+)
 
-Some platforms (X Articles, Substack) have no public draft API. mmp
+Some platforms (X Articles, Substack) have no public draft API. meti
 drives the user's **real Chrome** via the [OpenCLI Browser
 Bridge][opencli], which is a Chrome extension + small local daemon
 that exposes browser primitives over a CLI.
@@ -62,7 +62,7 @@ Click "Add to Chrome". Confirm the extension is enabled at
 ### 3. Verify
 
 ```bash
-mmp browser status
+meti browser status
 # → OK  Browser Bridge connected. Current tab: ...
 ```
 
@@ -72,28 +72,28 @@ isn't installed or Chrome isn't running. Start Chrome and re-check.
 For deeper diagnostic:
 
 ```bash
-mmp browser doctor
+meti browser doctor
 ```
 
 ### 4. Make sure you're logged in
 
-`mmp browser login <provider>` opens the provider's login URL **in
+`meti browser login <provider>` opens the provider's login URL **in
 your real Chrome**. If you're already logged in, it's a no-op.
 
 ```bash
-mmp browser login x-article    # opens https://x.com/i/flow/login
-mmp browser login substack     # opens https://substack.com/sign-in
-mmp browser login wechat-image # opens https://mp.weixin.qq.com/  (v0.3.2+)
+meti browser login x-article    # opens https://x.com/i/flow/login
+meti browser login substack     # opens https://substack.com/sign-in
+meti browser login wechat-image # opens https://mp.weixin.qq.com/  (v0.3.2+)
 ```
 
 ### 5. Create a draft
 
 ```bash
-mmp publish examples/longform.yaml --mode-override draft
+meti publish examples/longform.yaml --mode-override draft
 ```
 
 If the manifest includes a browser-flow provider (x-article, substack,
-or wechat-image), mmp:
+or wechat-image), meti:
 
 1. Calls `opencli browser open <provider compose URL>` in your Chrome
 2. For wechat-image: injects local image bytes via the
@@ -112,15 +112,15 @@ in the run dir. The other targets (wechat-article, etc.) still run.
 ## Session expiry
 
 Browser sessions don't last forever. When X / Substack / WeChat MP
-invalidates your cookies (typically 1–4 weeks of inactivity), `mmp
+invalidates your cookies (typically 1–4 weeks of inactivity), `meti
 publish` fails on the browser flow with a "redirected to login" error.
 Just go to the provider's site in your Chrome, log in normally, then
 retry:
 
 ```bash
 # Just open it; the site remembers the rest.
-mmp browser login x-article     # or substack / wechat-image
-mmp resume <run-dir>
+meti browser login x-article     # or substack / wechat-image
+meti resume <run-dir>
 ```
 
 ## CI / headless environments
@@ -152,7 +152,7 @@ Fix path:
    ```
 2. Find the new selector(s)
 3. Update the candidates list in the provider's `internal/browser_flow.py`
-4. `mmp publish ... --mode-override draft` to verify
+4. `meti publish ... --mode-override draft` to verify
 
 ## i18n caveats
 
@@ -202,15 +202,15 @@ If MP changes UI:
 ## Security
 
 - Your X / Substack / WeChat MP cookies live in **your** Chrome, not
-  in mmp.
-- mmp doesn't read cookie databases or copy login state.
+  in meti.
+- meti doesn't read cookie databases or copy login state.
 - For `wechat-image`, image bytes are passed to the page via base64 in
   the `eval` channel; they only live in the page memory of the editor
-  tab and the upload XHR to `mp.weixin.qq.com`. mmp never persists
+  tab and the upload XHR to `mp.weixin.qq.com`. meti never persists
   them outside the run-dir's pack folder.
 - `result.json` and `publish-log.md` only record draft URLs and IDs
   — no session tokens.
-- The OpenCLI extension only acts when you (or mmp on your behalf)
+- The OpenCLI extension only acts when you (or meti on your behalf)
   call `opencli browser ...`. Audit by running
   `npx @jackwener/opencli doctor`.
 
@@ -249,4 +249,4 @@ browser they'd see if the user were clicking manually.
 
 - OpenCLI repo: <https://github.com/jackwener/opencli>
 - Chrome extension: <https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk>
-- mmp PR introducing this: <https://github.com/Nowhitestar/multi-media-publisher/pull/3>
+- meti PR introducing this: <https://github.com/Nowhitestar/meti/pull/3>

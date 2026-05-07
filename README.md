@@ -1,4 +1,4 @@
-# multi-media-publisher
+# meti
 
 Publish one piece of content to many platforms — 小红书, 微信图文, 微信公众号
 文章, X Articles, Substack — through one manifest, with draft-first safety
@@ -32,14 +32,14 @@ Full design spec: [`docs/HANDOFF.md`](docs/HANDOFF.md).
 Code at the directory.)
 
 ```bash
-git clone https://github.com/yxliao-lewis/multi-media-publisher.git
+git clone https://github.com/yxliao-lewis/meti.git
 # Then in Claude Code: settings → plugins → load from directory
 ```
 
 After v0.2.0 marketplace submission lands, the install will be:
 
 ```
-/plugin install multi-media-publisher
+/plugin install meti
 ```
 
 ### As an OpenClaw skill
@@ -47,8 +47,8 @@ After v0.2.0 marketplace submission lands, the install will be:
 Clone into your skills directory:
 
 ```bash
-git clone https://github.com/yxliao-lewis/multi-media-publisher.git \
-  ~/.openclaw/skills/multi-media-publisher
+git clone https://github.com/yxliao-lewis/meti.git \
+  ~/.openclaw/skills/meti
 ```
 
 ### Python deps
@@ -74,28 +74,28 @@ target selection → manifest assembly → draft.
 
 ```bash
 # Validate a manifest
-mmp validate examples/longform.yaml
+meti validate examples/longform.yaml
 
 # Configure credentials for a provider
-mmp setup wechat-article
+meti setup wechat-article
 
 # Run a publish (defaults to draft mode in the manifest)
-mmp publish examples/longform.yaml
+meti publish examples/longform.yaml
 
 # List providers / accounts / runs
-mmp list providers
-mmp list accounts
-mmp list runs
+meti list providers
+meti list accounts
+meti list runs
 
 # Self-check
-mmp doctor
+meti doctor
 ```
 
 ## Safety
 
 - Default `mode: draft`. Public publishing requires explicit `mode: publish`
   in the manifest **plus** an in-conversation confirmation.
-- Credentials are stored in `~/.config/mmp/credentials.json.age` (age-encrypted).
+- Credentials are stored in `~/.config/meti/credentials.json.age` (age-encrypted).
 - Secrets never appear in `result.json`, `publish-log.md`, or printed output.
 - Full policy: [`docs/safety-policy.md`](docs/safety-policy.md).
 
@@ -117,7 +117,7 @@ providers/               # bundled first-party providers
   wechat_image/
   x_article/
   substack/
-scripts/mmp.py           # CLI entry
+scripts/meti.py           # CLI entry
 .claude-plugin/          # Claude Code plugin manifest
 SKILL.md                 # OpenClaw + Claude Code skill manifest
 docs/                    # user-facing docs

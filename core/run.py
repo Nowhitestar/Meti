@@ -60,14 +60,14 @@ class Run:
     run_id: str
     dir: Path
     mode: str
-    mmp_version: str
+    meti_version: str
     host: str
     started_at: str = field(default_factory=_now_iso)
     completed_at: str | None = None
     targets: list[_TargetResult] = field(default_factory=list)
 
     @classmethod
-    def create(cls, title: str, mmp_version: str, host: str, mode: str) -> Run:
+    def create(cls, title: str, meti_version: str, host: str, mode: str) -> Run:
         base_rid = f"{_now_id()}-{slugify(title)}"
         runs_root = host_runs_dir()
         # Resolve collision by appending -2, -3, ... if the base_rid dir already exists.
@@ -80,7 +80,7 @@ class Run:
         d.mkdir(parents=True)
         for sub in ("packs", "checkpoints", "artifacts"):
             (d / sub).mkdir()
-        run = cls(run_id=rid, dir=d, mode=mode, mmp_version=mmp_version, host=host)
+        run = cls(run_id=rid, dir=d, mode=mode, meti_version=meti_version, host=host)
         run.log("RUN_START", run_id=rid, mode=mode)
         return run
 
@@ -94,7 +94,7 @@ class Run:
         if rp.exists():
             data = json.loads(rp.read_text(encoding="utf-8"))
             mode = data.get("mode", mode)
-        return cls(run_id=rid, dir=run_dir, mode=mode, mmp_version="?", host="?")
+        return cls(run_id=rid, dir=run_dir, mode=mode, meti_version="?", host="?")
 
     def add_target_result(
         self,
@@ -160,7 +160,7 @@ class Run:
             "completed_at": self.completed_at,
             "mode": self.mode,
             "host": self.host,
-            "mmp_version": self.mmp_version,
+            "meti_version": self.meti_version,
             "targets": [asdict(t) for t in self.targets],
         }
         (self.dir / "result.json").write_text(

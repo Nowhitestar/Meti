@@ -18,7 +18,7 @@ their normal Chrome (where they're already logged in to everything),
 and any tool can drive that Chrome via the ``opencli browser`` CLI.
 
 This module wraps ``opencli browser`` subcommands as a Python class so
-mmp providers can drive automation without caring about the underlying
+meti providers can drive automation without caring about the underlying
 backend. The OpenCLI binary is invoked via ``npx`` so users don't need
 a separate global install.
 
@@ -27,15 +27,15 @@ Setup
 1. Install Node.js >= 21
 2. Install the Chrome extension:
    https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk
-3. Verify with ``mmp browser status``
+3. Verify with ``meti browser status``
 
 State / sessions
 ----------------
-Unlike the previous Playwright design, mmp does NOT store any browser
+Unlike the previous Playwright design, meti does NOT store any browser
 state. Login state lives in the user's own Chrome profile, exactly as
-they would expect. ``mmp browser login`` is therefore a no-op pointer
+they would expect. ``meti browser login`` is therefore a no-op pointer
 to the provider's actual login URL — open it in Chrome, log in
-normally, mmp can drive Chrome for you afterward.
+normally, meti can drive Chrome for you afterward.
 
 Error model
 -----------
@@ -89,7 +89,7 @@ def _opencli_argv() -> list[str]:
         "neither `opencli` nor `npx` is on PATH. Install Node.js >= 21:\n"
         "  brew install node          # macOS\n"
         "  apt install nodejs npm     # ubuntu\n"
-        "Then mmp will use `npx @jackwener/opencli ...` automatically."
+        "Then meti will use `npx @jackwener/opencli ...` automatically."
     )
 
 
@@ -141,7 +141,7 @@ def _run(args: list[str], *, check: bool = True, timeout: float = 120.0) -> dict
 def doctor() -> dict[str, Any]:
     """Run ``opencli doctor`` and return its diagnostic output.
 
-    Useful when ``mmp browser status`` is called: surfaces extension
+    Useful when ``meti browser status`` is called: surfaces extension
     connectivity, daemon status, Chrome detection, etc.
     """
     argv = _opencli_argv() + ["doctor"]

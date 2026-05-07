@@ -18,7 +18,7 @@ Produce a list of `Target` entries:
 1. **Get available providers**: run
 
    ```bash
-   python3 scripts/mmp.py wizard --dump-context --type <draft.type>
+   python3 scripts/meti.py wizard --dump-context --type <draft.type>
    ```
 
    The output is JSON with `providers`, `accounts`, `settings`.
@@ -30,7 +30,7 @@ Produce a list of `Target` entries:
    ```
    Available targets for <type>:
      ✓ wechat-article    (creds: ok)        — 微信公众号文章
-     ✗ xiaohongshu       (creds: missing)   — 小红书图文 [run `mmp setup xiaohongshu` first]
+     ✗ xiaohongshu       (creds: missing)   — 小红书图文 [run `meti setup xiaohongshu` first]
      ✓ x-article         (creds: ok)        — X Articles
      ✓ substack          (creds: ok)        — Substack
    ```
@@ -47,7 +47,7 @@ Produce a list of `Target` entries:
      - For `substack`: ask about subtitle / paid-tier flag.
 
 6. Do NOT proceed if a chosen target has `credential_status: missing`. Tell the
-   user which `mmp setup <provider>` to run, and either wait for them to do it
+   user which `meti setup <provider>` to run, and either wait for them to do it
    (then re-run `--dump-context`) or drop that target.
 
 ## When to advance
