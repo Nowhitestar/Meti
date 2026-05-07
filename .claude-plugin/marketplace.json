@@ -19,6 +19,15 @@
       "homepage": "https://liao.uno/meti",
       "repository": "https://github.com/Nowhitestar/meti",
       "license": "MIT",
+      "category": "publishing",
+      "tags": [
+        "publishing",
+        "wechat",
+        "xiaohongshu",
+        "substack",
+        "x-articles",
+        "draft-first"
+      ],
       "keywords": [
         "publishing",
         "wechat",
