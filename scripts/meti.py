@@ -234,10 +234,53 @@ def cmd_publish(args: argparse.Namespace) -> int:
 
         run.finalize()
         print(f"RUN_DIR  {run.dir}")
+        _print_publish_checklist(run.targets)
         return 0
     except MetiError as e:
         print(f"ERROR  {e}", file=sys.stderr)
         return 2
+
+
+# Per-provider hints for the "next step" line in the publish checklist.
+_NEXT_STEP_LABELS = {
+    "wechat-article": "review at the URL above; click 发表 in MP when ready",
+    "wechat-image": "draft saved to your 草稿箱; click 发表 when ready",
+    "xiaohongshu": "draft saved; finalize in 创作服务平台 → 草稿箱",
+    "x-article": "X auto-saved; click Publish when ready",
+    "substack": "Substack auto-saved; click Publish when ready",
+}
+
+
+def _print_publish_checklist(targets) -> None:
+    """Print a per-target action checklist after a publish run.
+
+    By contract, meti drafts; the user reviews and clicks the platform's
+    own publish/save button. The checklist surfaces each draft URL and
+    the corresponding next-step instruction.
+    """
+    if not targets:
+        return
+    okays = [t for t in targets if t.status == "ok"]
+    fails = [t for t in targets if t.status != "ok"]
+    if okays:
+        print(f"\n{len(okays)} draft(s) staged:\n")
+        for t in okays:
+            mode_tag = {
+                "draft-platform": "platform draft",
+                "draft-local": "local draft",
+                "stub": "stub (manual)",
+                "dry-run": "dry-run only",
+            }.get(t.mode_actual, t.mode_actual)
+            url = t.draft_url or "(no URL)"
+            label = _NEXT_STEP_LABELS.get(t.name, "review and finalize in your browser")
+            print(f"  ✓ {t.name:<18} [{mode_tag}]")
+            print(f"    {url}")
+            print(f"    → {label}")
+    if fails:
+        print(f"\n{len(fails)} target(s) failed:\n")
+        for t in fails:
+            print(f"  ✗ {t.name}: {t.error}")
+    print("\nMeti drafts; you publish. Tabs are left open by design.")
 
 
 def cmd_setup(args: argparse.Namespace) -> int:
@@ -426,6 +469,7 @@ def cmd_resume(args: argparse.Namespace) -> int:
 
         run.finalize()
         print(f"RUN_DIR  {run.dir}")
+        _print_publish_checklist(run.targets)
         return 0
     except MetiError as e:
         print(f"ERROR  {e}", file=sys.stderr)

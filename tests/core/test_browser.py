@@ -115,7 +115,9 @@ def test_open_url_invocation():
         )
         result = open_url("https://example.com")
         argv = mock_run.call_args[0][0]
-        assert argv[-2:] == ["open", "https://example.com"]
+        # v0.4.1: open_url passes --allow-navigate-bound so meti can
+        # drive the bound:meti workspace's user-anchored tab.
+        assert argv[-3:] == ["open", "https://example.com", "--allow-navigate-bound"]
         assert result == {"target": "tab-1"}
 
 

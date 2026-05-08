@@ -318,12 +318,15 @@ def get_title(tab: str | None = None) -> str:
 
 
 def open_url(url: str, tab: str | None = None) -> dict[str, Any]:
-    """Navigate ``tab`` (or the bound workspace's active tab) to ``url``.
+    """Navigate the bound workspace's active tab to ``url``.
 
-    NB: ``opencli browser open`` opens in the workspace's active tab when
-    no ``--tab`` is given. To create a fresh tab, use ``tab_new(url)``.
+    OpenCLI's bound workspace blocks navigation by default to protect
+    the user's tab context; we pass ``--allow-navigate-bound`` so meti
+    can drive its own bound tab. The user is expected to bind a tab
+    they're willing to let meti drive (e.g. a fresh blank tab) via
+    ``meti browser bind`` before running publish.
     """
-    args = ["open", url]
+    args = ["open", url, "--allow-navigate-bound"]
     if tab:
         args += ["--tab", tab]
     return _run(args)

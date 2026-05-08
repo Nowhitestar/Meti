@@ -248,7 +248,7 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     draft server-side, which is fine and useful — WeChat MP drafts sync
     cross-device, so user gets it on phone too).
 
-    Returns ``{"draft_url": <url>, "external_id": <appmsgid>, "tab_id": <id>}``.
+    Returns ``{"draft_url": <url>, "external_id": <appmsgid>}``.
 
     Args:
         payload: dict with ``title``, ``caption`` (or ``body``),
@@ -270,10 +270,11 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     if len(images) > 9:
         raise ValueError(f"贴图 supports up to 9 images, got {len(images)}")
 
-    # 1. Open MP root in a fresh tab to discover the session token.
-    tab = br.tab_new(MP_HOME_URL)
+    # 1. Navigate the bound tab to MP root to discover the session
+    # token. Sequential single-tab design.
+    br.open_url(MP_HOME_URL)
     time.sleep(PAGE_LOAD_WAIT_S)
-    home_url = br.get_url(tab=tab)
+    home_url = br.get_url()
     if "/sign" in home_url or "login" in home_url.lower():
         raise RuntimeError(
             "MP redirected to sign-in. Your Chrome's MP session is logged out. "
@@ -290,10 +291,10 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
 
     # 2. Navigate same tab to 贴图 editor (action=add allocates a fresh draft).
     editor_url = EDITOR_URL_TPL.format(token=token)
-    br.open_url(editor_url, tab=tab)
+    br.open_url(editor_url)
     time.sleep(PAGE_LOAD_WAIT_S)
 
-    ready_raw = br.evaluate(_JS_EDITOR_READY, tab=tab)
+    ready_raw = br.evaluate(_JS_EDITOR_READY)
     ready = _parse_eval(ready_raw)
     if not ready.get("ready"):
         raise RuntimeError(
@@ -306,11 +307,11 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
 
     # 3. Upload each image in order.
     for idx, image_path in enumerate(images):
-        _upload_one_image(image_path, idx, tab=tab)
+        _upload_one_image(image_path, idx)
 
     # 4. Set title via execCommand('insertText') for React dirty-state.
     if title:
-        title_raw = br.evaluate(_js_set_title(title), tab=tab)
+        title_raw = br.evaluate(_js_set_title(title))
         title_res = _parse_eval(title_raw)
         if not title_res.get("ok"):
             raise RuntimeError(
@@ -321,7 +322,7 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     # 5. Type caption (if any). Body is a ProseMirror; focus it via JS,
     # then dispatch insertText.
     if caption:
-        focus_raw = br.evaluate(_JS_FOCUS_BODY, tab=tab)
+        focus_raw = br.evaluate(_JS_FOCUS_BODY)
         focus = _parse_eval(focus_raw)
         if not focus.get("focused"):
             raise RuntimeError(
@@ -330,14 +331,14 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
                 f"in {__file__}."
             )
         try:
-            br.evaluate(_js_dispatch_text(caption), tab=tab)
+            br.evaluate(_js_dispatch_text(caption))
         except Exception as e:
             raise RuntimeError(f"贴图: could not insert caption into body editor: {e}") from e
 
     # 6. Click "保存为草稿". This persists the draft server-side so it
     # syncs to user's other devices. We do NOT click "发表" / Publish —
     # the user reviews + ships from their own browser.
-    save_raw = br.evaluate(_JS_CLICK_SAVE, tab=tab)
+    save_raw = br.evaluate(_JS_CLICK_SAVE)
     save = _parse_eval(save_raw)
     if not save.get("clicked"):
         raise RuntimeError(
@@ -346,10 +347,10 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     time.sleep(SAVE_WAIT_S)
 
     # 7. Re-extract appmsgid (MP rewrites URL on save success).
-    final_url = br.get_url(tab=tab)
+    final_url = br.get_url()
     final_id = _extract_appmsgid(final_url) or appmsgid
     if not final_id:
-        latest_raw = br.evaluate(_JS_GET_APPMSGID, tab=tab)
+        latest_raw = br.evaluate(_JS_GET_APPMSGID)
         latest = _parse_eval(latest_raw)
         final_id = latest.get("appmsgid")
         final_url = latest.get("url", final_url)
@@ -359,11 +360,7 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
             "Save may have failed silently — check the editor in Chrome."
         )
 
-    return {
-        "draft_url": final_url,
-        "external_id": str(final_id),
-        "tab_id": tab,
-    }
+    return {"draft_url": final_url, "external_id": str(final_id)}
 
 
 # ---------------------------------------------------------------------------
@@ -403,7 +400,7 @@ def _extract_appmsgid(url: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _upload_one_image(image_path: str, idx: int, *, tab: str | None = None) -> None:
+def _upload_one_image(image_path: str, idx: int) -> None:
     """Inject a single image and wait for MP to upload + acknowledge."""
     from core import browser as br
 
@@ -425,7 +422,7 @@ def _upload_one_image(image_path: str, idx: int, *, tab: str | None = None) -> N
 
     b64 = base64.b64encode(p.read_bytes()).decode("ascii")
     js = _js_inject_image(b64, p.name, mime)
-    raw = br.evaluate(js, tab=tab)
+    raw = br.evaluate(js)
     parsed = _parse_eval(raw)
     if not parsed.get("ok"):
         result = parsed.get("result") or {}

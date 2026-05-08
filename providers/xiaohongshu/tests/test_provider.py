@@ -67,69 +67,65 @@ def test_execute_dry_run(img_manifest, tmp_path):
     assert res.mode_actual == "dry-run"
 
 
-def test_execute_draft_invokes_local_script(img_manifest, tmp_path):
+def test_execute_draft_stub_when_bridge_disconnected(img_manifest, tmp_path):
+    """No OpenCLI bridge → stub mode + TODO-connector.md, no exception."""
     run_dir = tmp_path / "run"
-    (run_dir / "packs" / "xiaohongshu").mkdir(parents=True)
+    pack_dir = run_dir / "packs" / "xiaohongshu"
+    pack_dir.mkdir(parents=True)
     p = XiaohongshuProvider()
     p.prepare(img_manifest, img_manifest.targets[0], run_dir)
 
-    with patch(
-        "providers.xiaohongshu.provider._invoke_local_draft",
-        return_value={"draft_id": "20260506-foo", "draft_path": "/tmp/foo.json"},
-    ) as mock:
-        # No credentials needed for local-draft mode in v0.2.
-        res = p.execute(
-            run_dir,
-            img_manifest.targets[0],
-            mode="draft",
-            credentials={},
-        )
-    mock.assert_called_once()
+    with patch("core.browser.is_connected", return_value=False):
+        res = p.execute(run_dir, img_manifest.targets[0], mode="draft", credentials={})
+
     assert res.status == "ok"
-    assert res.mode_actual == "draft-local"
-    assert res.external_id == "20260506-foo"
-    assert res.extras["draft_path"] == "/tmp/foo.json"
+    assert res.mode_actual == "stub"
+    assert res.extras["connector_status"] == "bridge-not-connected"
+    assert (pack_dir / "TODO-connector.md").exists()
 
 
-def test_execute_draft_passes_payload_dict(img_manifest, tmp_path):
-    """_invoke_local_draft receives the loaded payload dict, not a path."""
+def test_execute_draft_stub_when_not_bound(img_manifest, tmp_path):
+    """Bridge connected but no bound:meti workspace → stub + helpful message."""
+    run_dir = tmp_path / "run"
+    pack_dir = run_dir / "packs" / "xiaohongshu"
+    pack_dir.mkdir(parents=True)
+    p = XiaohongshuProvider()
+    p.prepare(img_manifest, img_manifest.targets[0], run_dir)
+
+    with (
+        patch("core.browser.is_connected", return_value=True),
+        patch("core.browser.is_bound", return_value=False),
+    ):
+        res = p.execute(run_dir, img_manifest.targets[0], mode="draft", credentials={})
+
+    assert res.mode_actual == "stub"
+    assert res.extras["connector_status"] == "bridge-not-bound"
+
+
+def test_execute_draft_invokes_browser_flow(img_manifest, tmp_path):
+    """Bridge connected + bound → call browser_flow.create_draft."""
     run_dir = tmp_path / "run"
     (run_dir / "packs" / "xiaohongshu").mkdir(parents=True)
     p = XiaohongshuProvider()
     p.prepare(img_manifest, img_manifest.targets[0], run_dir)
 
-    with patch(
-        "providers.xiaohongshu.provider._invoke_local_draft",
-        return_value={"draft_id": "x", "draft_path": "/tmp/x.json"},
-    ) as mock:
-        p.execute(run_dir, img_manifest.targets[0], mode="draft", credentials={})
+    with (
+        patch("core.browser.is_connected", return_value=True),
+        patch("core.browser.is_bound", return_value=True),
+        patch(
+            "providers.xiaohongshu.internal.browser_flow.create_draft",
+            return_value={
+                "draft_url": "https://creator.xiaohongshu.com/publish/publish?target=image",
+                "external_id": None,
+            },
+        ),
+    ):
+        res = p.execute(run_dir, img_manifest.targets[0], mode="draft", credentials={})
 
-    args, _ = mock.call_args
-    payload_arg = args[0]
-    assert isinstance(payload_arg, dict)
-    assert payload_arg["title"] == "短标题"
-    assert payload_arg["caption"] == "这是一段不超过 1000 字的图文 caption。"
-
-
-def test_build_xhs_payload_reshapes_for_draft_sh():
-    """Internal: payload reshape matches draft.sh's expected JSON shape."""
-    from providers.xiaohongshu.provider import _build_xhs_payload
-
-    out = _build_xhs_payload(
-        {
-            "title": "T",
-            "caption": "C",
-            "images": ["/abs/a.png"],
-            "tags": ["x"],
-            "extra_unused": "ignored",
-        }
-    )
-    assert out == {
-        "title": "T",
-        "content": "C",  # caption -> content
-        "images": ["/abs/a.png"],
-        "tags": ["x"],
-    }
+    assert res.status == "ok"
+    assert res.mode_actual == "draft-platform"
+    assert res.external_id is None
+    assert "creator.xiaohongshu.com" in (res.draft_url or "")
 
 
 def test_execute_publish_refused(img_manifest, tmp_path):
@@ -138,9 +134,9 @@ def test_execute_publish_refused(img_manifest, tmp_path):
     p = XiaohongshuProvider()
     p.prepare(img_manifest, img_manifest.targets[0], run_dir)
     with pytest.raises(NotImplementedError, match="publish"):
-        p.execute(
-            run_dir,
-            img_manifest.targets[0],
-            mode="publish",
-            credentials={},
-        )
+        p.execute(run_dir, img_manifest.targets[0], mode="publish", credentials={})
+
+
+def test_browser_login_url_set():
+    p = XiaohongshuProvider()
+    assert p.browser_login_url == "https://creator.xiaohongshu.com/login"

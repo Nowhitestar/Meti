@@ -1,32 +1,25 @@
-"""Xiaohongshu provider — local draft via the xiaohongshu skill's draft.sh.
+"""Xiaohongshu provider — drives Creator Studio via OpenCLI Browser Bridge.
 
-This v0.2 provider only knows the `draft-local` path: it shells out to the
-local xiaohongshu skill's `draft.sh`, which writes a JSON draft file to
-``~/.xiaohongshu/drafts/`` (or ``XHS_DRAFT_DIR``). No platform upload, no API
-call, no cookie required.
+v0.4.1+ replaces the older local-JSON ``draft.sh`` path because XHS's
+draft data is anchored to the user's actual browser session — meti has
+to drive that session for the draft to be reachable later. See
+``docs/browser-connectors.md`` for setup.
 
-Platform draft and publish are deferred to v0.3.
+Flow:
+- ``meti browser bind`` (one-time, points meti at your Chrome tab)
+- ``meti publish ...`` — for the xiaohongshu target, meti navigates the
+  bound tab to ``creator.xiaohongshu.com/publish/publish?target=image``,
+  injects images via ``DataTransfer``, types title + caption, clicks
+  存草稿. The draft lands in your XHS account's 草稿箱 (server-side).
 
-draft.sh contract (verified empirically against the real script):
-- Input: a single positional argument that is a JSON string with fields
-  ``title``, ``content``, ``images`` (absolute paths), ``tags``, optional ``video``.
-- Output: human-readable lines on stdout, starting with
-  ``✓ 已创建本地草稿: <abs path to draft json>``.
-- Side effect: a draft JSON file at ``$XHS_DRAFT_DIR/<ts>-<slug>.json``.
-
-Discovery candidates (in order; first match wins):
-1. ``$XHS_DRAFT_SH`` env var (full path to draft.sh)
-2. ``~/.openclaw/workspace/skills/xiaohongshu/scripts/draft.sh`` (workspace install)
-3. ``~/.openclaw/skills/xiaohongshu/scripts/draft.sh`` (legacy install)
-4. ``~/.config/meti/skills/xiaohongshu/scripts/draft.sh`` (meti-managed install)
+Stub fallback: if the bridge isn't connected, the provider writes a
+``TODO-connector.md`` and returns ``mode_actual="stub"``. The previous
+``draft.sh`` local-JSON path is removed.
 """
 
 from __future__ import annotations
 
 import json
-import os
-import re
-import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -41,82 +34,17 @@ from core.provider import (
 )
 from providers.xiaohongshu.rules import XHS_RULES
 
-_DRAFT_PATH_RE = re.compile(r"已创建本地草稿:\s*(.+)")
-
-
-def _locate_draft_sh() -> Path | None:
-    env = os.environ.get("XHS_DRAFT_SH", "").strip()
-    if env:
-        p = Path(env).expanduser()
-        return p if p.exists() else None
-    candidates = [
-        Path.home() / ".openclaw" / "workspace" / "skills" / "xiaohongshu" / "scripts" / "draft.sh",
-        Path.home() / ".openclaw" / "skills" / "xiaohongshu" / "scripts" / "draft.sh",
-        Path.home() / ".config" / "meti" / "skills" / "xiaohongshu" / "scripts" / "draft.sh",
-    ]
-    return next((c for c in candidates if c.exists()), None)
-
-
-def _build_xhs_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    """Reshape meti's payload.json into the JSON draft.sh expects."""
-    out: dict[str, Any] = {
-        "title": payload.get("title", ""),
-        "content": payload.get("caption", "") or payload.get("content", ""),
-        "images": list(payload.get("images") or []),
-        "tags": list(payload.get("tags") or []),
-    }
-    video = payload.get("video")
-    if video:
-        out["video"] = video
-    return out
-
-
-def _invoke_local_draft(payload: dict[str, Any]) -> dict[str, Any]:
-    """Call the xiaohongshu skill's draft.sh with a JSON string arg.
-
-    Returns ``{"draft_id": str, "draft_path": str}``.
-    """
-    script = _locate_draft_sh()
-    if script is None:
-        raise FileNotFoundError(
-            "xiaohongshu draft.sh not found. Set XHS_DRAFT_SH env var or install "
-            "the xiaohongshu skill at one of the standard locations."
-        )
-
-    xhs_json = json.dumps(_build_xhs_payload(payload), ensure_ascii=False)
-    result = subprocess.run(
-        [str(script), xhs_json],
-        capture_output=True,
-        text=True,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(f"draft.sh failed (exit {result.returncode}): {result.stderr.strip()}")
-
-    # Parse stdout for the draft path line. Format:
-    #   ✓ 已创建本地草稿: /path/to/draft.json
-    draft_path: str | None = None
-    for line in result.stdout.splitlines():
-        m = _DRAFT_PATH_RE.search(line)
-        if m:
-            draft_path = m.group(1).strip()
-            break
-    if draft_path is None:
-        raise RuntimeError(f"draft.sh did not report a draft path. stdout was:\n{result.stdout}")
-
-    # draft_id = the file's basename without extension
-    draft_id = Path(draft_path).stem
-    return {"draft_id": draft_id, "draft_path": draft_path}
-
 
 class XiaohongshuProvider(Provider):
     name = "xiaohongshu"
     display_name = "小红书"
     media_types = ["image-post", "video-post"]
     capabilities = {"draft": True, "publish": False, "schedule": False}
-    # Local draft path needs no credentials. XHS_COOKIE_PATH listed for v0.3
-    # platform-draft / publish flow; not required by current `draft-local`.
+    # Browser-flow provider: no API credentials. Auth via the user's
+    # logged-in Chrome session (driven via OpenCLI Browser Bridge).
     required_credentials: list[CredentialSpec] = []
     platform_rules = XHS_RULES
+    browser_login_url = "https://creator.xiaohongshu.com/login"
 
     def validate(self, manifest: Any, target: Any) -> ValidationResult:
         return ValidationResult(violations=self.platform_rules.lint(manifest, self.name))
@@ -147,29 +75,112 @@ class XiaohongshuProvider(Provider):
         credentials: dict[str, str],
     ) -> ExecutionResult:
         if mode == "publish":
-            raise NotImplementedError(
-                "xiaohongshu publish path not enabled in v0.2; use mode=draft"
-            )
+            raise NotImplementedError("xiaohongshu publish path not enabled in v0.4")
         if mode == "dry-run":
             return ExecutionResult(status="ok", mode_actual="dry-run", external_id=None)
 
-        # mode == draft → invoke local draft.sh, no creds needed
-        payload_path = run_dir / "packs" / self.name / "payload.json"
+        from core import browser as br
+
+        pack_dir = run_dir / "packs" / self.name
+        payload_path = pack_dir / "payload.json"
         payload = json.loads(payload_path.read_text(encoding="utf-8"))
+
+        if not br.is_connected():
+            self._write_stub(pack_dir, reason="bridge-not-connected")
+            return ExecutionResult(
+                status="ok",
+                mode_actual="stub",
+                external_id=None,
+                extras={
+                    "connector_status": "bridge-not-connected",
+                    "remediation": (
+                        "Install OpenCLI Chrome extension + run `meti browser bind`; "
+                        "see docs/browser-connectors.md"
+                    ),
+                },
+            )
+        if not br.is_bound():
+            self._write_stub(pack_dir, reason="bridge-not-bound")
+            return ExecutionResult(
+                status="ok",
+                mode_actual="stub",
+                external_id=None,
+                extras={
+                    "connector_status": "bridge-not-bound",
+                    "remediation": (
+                        "Run `meti browser bind` from a Chrome tab you want meti "
+                        "to drive, then re-run publish."
+                    ),
+                },
+            )
+
+        from providers.xiaohongshu.internal.browser_flow import create_draft
+
         try:
-            out = _invoke_local_draft(payload)
+            result = create_draft(payload)
+        except br.BrowserNotBoundError as exc:
+            self._write_stub(pack_dir, reason="bridge-not-bound")
+            raise ProviderExecutionError(
+                target=self.name,
+                step="browser_bridge",
+                upstream=exc,
+                retryable=True,
+            ) from exc
+        except br.BrowserNotConnectedError as exc:
+            self._write_stub(pack_dir, reason="bridge-not-connected")
+            raise ProviderExecutionError(
+                target=self.name,
+                step="browser_bridge",
+                upstream=exc,
+                retryable=True,
+            ) from exc
+        except br.BrowserNotInstalledError as exc:
+            self._write_stub(pack_dir, reason="opencli-not-installed")
+            raise ProviderExecutionError(
+                target=self.name,
+                step="browser_bridge",
+                upstream=exc,
+                retryable=False,
+            ) from exc
         except Exception as exc:
             raise ProviderExecutionError(
-                target=self.name, step="local_draft", upstream=exc, retryable=True
+                target=self.name,
+                step="browser_draft",
+                upstream=exc,
+                retryable=True,
             ) from exc
 
         return ExecutionResult(
             status="ok",
-            mode_actual="draft-local",
-            external_id=out.get("draft_id"),
-            extras={"draft_path": out.get("draft_path")},
+            mode_actual="draft-platform",
+            external_id=result.get("external_id"),
+            draft_url=result.get("draft_url"),
+            extras={"connector_status": "browser-ok"},
         )
 
     def health_check(self, credentials: dict[str, str]) -> HealthStatus:
-        # Local draft only needs draft.sh present; no creds.
-        return HealthStatus.ok if _locate_draft_sh() is not None else HealthStatus.failed
+        from core import browser as br
+
+        return HealthStatus.ok if br.is_connected() else HealthStatus.failed
+
+    @staticmethod
+    def _write_stub(pack_dir: Path, *, reason: str) -> None:
+        (pack_dir / "TODO-connector.md").write_text(
+            f"# xiaohongshu browser connector skipped (reason: {reason})\n\n"
+            "Payload is ready at `payload.json`. To complete the draft:\n\n"
+            "**Option A (recommended): set up the OpenCLI Browser Bridge**\n\n"
+            "1. Install Node.js 21+: `brew install node` (macOS)\n"
+            "2. Install the Chrome extension:\n"
+            "   https://chromewebstore.google.com/detail/opencli/ildkmabpimmkaediidaifkhjpohdnifk\n"
+            "3. Make sure you're logged in to creator.xiaohongshu.com in Chrome\n"
+            "4. Open Chrome to a regular tab, then run: `meti browser bind`\n"
+            "5. Retry: `meti resume <this-run-dir>`\n\n"
+            "Setup details: docs/browser-connectors.md\n\n"
+            "**Option B: manually create the draft**\n\n"
+            "1. Open https://creator.xiaohongshu.com/publish/publish?target=image\n"
+            "2. Upload images from `payload.json`'s `images[]`\n"
+            "3. Paste title from `payload.title`\n"
+            "4. Paste caption from `content.md`\n"
+            "5. Click 存草稿\n",
+            encoding="utf-8",
+        )

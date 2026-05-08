@@ -2,6 +2,66 @@
 
 All notable changes to Meti are documented here. Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.1 — 2026-05-07
+
+Bound-Chrome workspace + draft-first contract.
+
+The biggest UX problem in v0.4.0 was that meti drove an OpenCLI
+"automation window" the user couldn't see — drafts were prepared in a
+separate Chrome instance whose cache wasn't shared with the user's main
+session, so platforms like Xiaohongshu (whose drafts anchor to a
+specific browser session) effectively lost draft data. v0.4.1 fixes
+this by anchoring meti to the user's actual Chrome window.
+
+### Changed
+
+- **Browser bridge now binds to the user's Chrome window.** Run
+  `meti browser bind` once from a Chrome tab you want meti to drive.
+  All subsequent meti operations route through `bound:meti` workspace
+  via OpenCLI's `--allow-navigate-bound` flag. Drafts persist in the
+  user's actual session, sync to other devices where the platform
+  supports it, and the user sees every step.
+- **`xiaohongshu` provider rewritten to drive Creator Studio via
+  browser-flow.** The previous `draft.sh` local-JSON path is removed —
+  XHS drafts must live in the user's browser session to be reachable
+  later, so meti drives `creator.xiaohongshu.com/publish/publish?target=image`,
+  injects images via `DataTransfer`, types title + caption, clicks
+  存草稿. Draft lands in the user's 草稿箱 server-side.
+- **`meti publish` prints a per-target action checklist at end.** Each
+  ✓ row shows the draft URL and the platform's publish-button name
+  ("发表" / "Publish") so the user knows exactly what to click. By
+  contract, meti drafts; the user publishes.
+
+### Added
+
+- `core.browser.bind() / unbind() / is_bound() / require_bound()`
+- `core.browser.tab_new() / tab_list() / tab_select() / tab_close()` —
+  tab primitives for future multi-tab support (OpenCLI v1.0.5 only
+  supports a single tab per workspace; the API is forward-compatible)
+- `core.browser.fill() / keys()` — newer opencli primitives surfaced
+- `BrowserNotBoundError` exception, distinct from `BrowserNotConnectedError`
+- `meti browser bind` / `unbind` CLI subcommands
+- `meti browser status` reports bound state in addition to bridge connectivity
+- `providers/xiaohongshu/internal/browser_flow.py` — Creator Studio
+  driver. 12 selector candidates (3 title + 3 body + 6 save-button)
+  for resilience against UI drift.
+
+### Removed
+
+- `providers/xiaohongshu/_invoke_local_draft()` and the entire
+  `draft.sh` discovery path. The local-JSON workflow is no longer
+  supported; tests for it are dropped.
+
+### Notes for users upgrading from 0.4.0
+
+1. After installing 0.4.1, run `meti browser bind` from a regular
+   Chrome tab before `meti publish`.
+2. If you used the old XHS local-JSON flow, you'll now drive XHS
+   Creator directly — log in once at `creator.xiaohongshu.com` in
+   the browser tab you bind.
+3. Existing `mode: draft` manifests work unchanged; the per-target
+   checklist appears automatically.
+
 ## 0.4.0 — 2026-05-07
 
 Project rebrand: `multi-media-publisher` → **Meti**.
