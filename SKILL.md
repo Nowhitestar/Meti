@@ -80,6 +80,7 @@ ask in the active conversation.
 | `xiaohongshu` | image-post (video planned) | dry-run, draft (local) | Uses xiaohongshu skill's `draft.sh` |
 | `wechat-image` | image-post | dry-run, draft (browser-flow guide) | UI calibration TODO; guide-only path |
 | `x-article` | longform | dry-run, draft (payload + TODO) | No connector yet; manual paste step |
+| `x-thread` | thread | dry-run, draft (browser-flow, fills modal) | Stops before "Post all"; user reviews + ships |
 | `substack` | longform | dry-run, draft (payload + TODO) | No connector yet; manual paste step |
 
 ## Safety rules

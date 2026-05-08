@@ -1,0 +1,11 @@
+name: x-thread
+display_name: X Thread
+media_types:
+  - thread
+capabilities:
+  draft: true
+  publish: false
+  schedule: false
+required_credentials: []
+entry: provider:XThreadProvider
+schema_version: 1

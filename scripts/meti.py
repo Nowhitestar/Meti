@@ -66,7 +66,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     sub_wizard = sub.add_parser("wizard", help="Conversational manifest wizard")
-    sub_wizard.add_argument("--type", choices=["image-post", "longform", "video-post"])
+    sub_wizard.add_argument("--type", choices=["image-post", "longform", "thread", "video-post"])
     sub_wizard.add_argument("--targets", default=None, help="Comma-separated target names")
     sub_wizard.add_argument(
         "--dump-context",

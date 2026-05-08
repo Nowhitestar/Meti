@@ -1,0 +1,10 @@
+schema_version: "0.2"
+type: thread
+title: "thread example"
+body: ./thread.md
+mode: draft
+language: zh-CN
+targets:
+  - x-thread
+tags:
+  - example
