@@ -107,13 +107,14 @@ def _run(
     *,
     check: bool = True,
     timeout: float = 120.0,
-    workspace: str | None = WORKSPACE,
+    workspace: str | None = None,
 ) -> dict[str, Any]:
     """Invoke ``opencli browser <args>`` and return parsed JSON output.
 
-    Adds ``--workspace bound:meti`` automatically. Pass ``workspace=None``
-    to skip — only used by ``bind()`` and a few diagnostics that need to
-    operate before the bound workspace exists.
+    Default workspace is whatever opencli picks (``browser:default`` —
+    its automation Chrome window). Pass ``workspace="bound:meti"`` for
+    operations that need the user's bound tab (used by ``bind()`` and
+    a few advanced flows). Most provider work uses the default.
     """
     full_args = list(args)
     if workspace is not None and "--workspace" not in full_args:
@@ -318,15 +319,18 @@ def get_title(tab: str | None = None) -> str:
 
 
 def open_url(url: str, tab: str | None = None) -> dict[str, Any]:
-    """Navigate the bound workspace's active tab to ``url``.
+    """Navigate the automation tab to ``url``.
 
-    OpenCLI's bound workspace blocks navigation by default to protect
-    the user's tab context; we pass ``--allow-navigate-bound`` so meti
-    can drive its own bound tab. The user is expected to bind a tab
-    they're willing to let meti drive (e.g. a fresh blank tab) via
-    ``meti browser bind`` before running publish.
+    By default this hits OpenCLI's ``browser:default`` automation
+    workspace — opencli will spawn a fresh tab in your Chrome on first
+    call, then reuse it across provider runs. Each provider in a
+    sequential publish navigates the same tab through to its editor.
+
+    Advanced: if you've run ``meti browser bind``, you can pin meti to
+    a specific Chrome tab. In that case ``open_url`` is wrapped with
+    ``--allow-navigate-bound`` (see core.browser.WORKSPACE).
     """
-    args = ["open", url, "--allow-navigate-bound"]
+    args = ["open", url]
     if tab:
         args += ["--tab", tab]
     return _run(args)

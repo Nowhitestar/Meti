@@ -94,22 +94,8 @@ class XiaohongshuProvider(Provider):
                 extras={
                     "connector_status": "bridge-not-connected",
                     "remediation": (
-                        "Install OpenCLI Chrome extension + run `meti browser bind`; "
+                        "Install OpenCLI Chrome extension + open Chrome; "
                         "see docs/browser-connectors.md"
-                    ),
-                },
-            )
-        if not br.is_bound():
-            self._write_stub(pack_dir, reason="bridge-not-bound")
-            return ExecutionResult(
-                status="ok",
-                mode_actual="stub",
-                external_id=None,
-                extras={
-                    "connector_status": "bridge-not-bound",
-                    "remediation": (
-                        "Run `meti browser bind` from a Chrome tab you want meti "
-                        "to drive, then re-run publish."
                     ),
                 },
             )
@@ -118,14 +104,6 @@ class XiaohongshuProvider(Provider):
 
         try:
             result = create_draft(payload)
-        except br.BrowserNotBoundError as exc:
-            self._write_stub(pack_dir, reason="bridge-not-bound")
-            raise ProviderExecutionError(
-                target=self.name,
-                step="browser_bridge",
-                upstream=exc,
-                retryable=True,
-            ) from exc
         except br.BrowserNotConnectedError as exc:
             self._write_stub(pack_dir, reason="bridge-not-connected")
             raise ProviderExecutionError(

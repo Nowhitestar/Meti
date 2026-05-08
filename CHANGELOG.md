@@ -2,6 +2,33 @@
 
 All notable changes to Meti are documented here. Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.2 — 2026-05-08
+
+Hotfix: drop the `meti browser bind` requirement. v0.4.1 made bind
+mandatory, but in practice OpenCLI's `browser:default` automation
+workspace auto-spawns a tab in the user's Chrome on first call —
+no manual setup needed. v0.4.2 reverts to that simpler default while
+keeping bind/unbind as optional advanced commands for users who want
+to pin meti to a specific tab.
+
+### Changed
+
+- `meti publish` works out of the box. No `meti browser bind` step
+  required first.
+- `core.browser.open_url()` drops the `--allow-navigate-bound` flag.
+- `core.browser._run()` no longer auto-injects `--workspace bound:meti`.
+  Default is whatever opencli picks (browser:default automation).
+- xiaohongshu provider drops the `is_bound()` precondition. Same logic
+  as the other browser-flow providers (`is_connected()` is enough).
+
+### Notes
+
+- `bind` / `unbind` / `is_bound` / `tab_new` etc. are still in the API
+  for advanced use (e.g., pinning meti to a specific Chrome tab when
+  you're juggling multiple workflows).
+- Tab still appears in your Chrome. It's in OpenCLI's automation
+  window — switch to it once to find it; subsequent runs reuse it.
+
 ## 0.4.1 — 2026-05-07
 
 Bound-Chrome workspace + draft-first contract.

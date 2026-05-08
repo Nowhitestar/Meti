@@ -84,26 +84,8 @@ def test_execute_draft_stub_when_bridge_disconnected(img_manifest, tmp_path):
     assert (pack_dir / "TODO-connector.md").exists()
 
 
-def test_execute_draft_stub_when_not_bound(img_manifest, tmp_path):
-    """Bridge connected but no bound:meti workspace → stub + helpful message."""
-    run_dir = tmp_path / "run"
-    pack_dir = run_dir / "packs" / "xiaohongshu"
-    pack_dir.mkdir(parents=True)
-    p = XiaohongshuProvider()
-    p.prepare(img_manifest, img_manifest.targets[0], run_dir)
-
-    with (
-        patch("core.browser.is_connected", return_value=True),
-        patch("core.browser.is_bound", return_value=False),
-    ):
-        res = p.execute(run_dir, img_manifest.targets[0], mode="draft", credentials={})
-
-    assert res.mode_actual == "stub"
-    assert res.extras["connector_status"] == "bridge-not-bound"
-
-
 def test_execute_draft_invokes_browser_flow(img_manifest, tmp_path):
-    """Bridge connected + bound → call browser_flow.create_draft."""
+    """Bridge connected → call browser_flow.create_draft."""
     run_dir = tmp_path / "run"
     (run_dir / "packs" / "xiaohongshu").mkdir(parents=True)
     p = XiaohongshuProvider()
@@ -111,7 +93,6 @@ def test_execute_draft_invokes_browser_flow(img_manifest, tmp_path):
 
     with (
         patch("core.browser.is_connected", return_value=True),
-        patch("core.browser.is_bound", return_value=True),
         patch(
             "providers.xiaohongshu.internal.browser_flow.create_draft",
             return_value={
