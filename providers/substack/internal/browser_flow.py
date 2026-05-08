@@ -66,14 +66,19 @@ def create_draft(
 ) -> dict[str, Any]:
     """Save a Substack post as a draft on the user's publication.
 
-    Returns ``{"draft_url": <url>, "external_id": <draft-id>}``.
+    Opens a fresh tab in meti's bound Chrome workspace, drives that tab
+    only, and leaves it open at the editor URL when done. Substack auto-
+    saves while we type; we do NOT click any Publish button — the user
+    reviews and ships from their own browser.
+
+    Returns ``{"draft_url": <url>, "external_id": <draft-id>, "tab_id": <id>}``.
 
     Args:
         payload: dict with ``title``, ``subtitle`` (optional), ``body``
         publication_url: e.g. ``https://lewisxbt.substack.com``
 
     Raises:
-        BrowserNotConnectedError / BrowserNotInstalledError: bridge issues
+        BrowserNotConnectedError / BrowserNotBoundError / BrowserNotInstalledError
         RuntimeError: selector failures, login redirect, missing publication
     """
     from core import browser as br
@@ -91,12 +96,12 @@ def create_draft(
             "SUBSTACK_PUBLICATION_URL env var."
         )
 
-    # 1. Open the post composer. Substack auto-allocates a draft and
-    # routes us to /publish/post/<id>.
-    br.open_url(_publish_url(publication_url))
+    # 1. Open the post composer in a fresh tab. Substack auto-allocates
+    # a draft and routes us to /publish/post/<id>.
+    tab = br.tab_new(_publish_url(publication_url))
     time.sleep(PAGE_LOAD_WAIT_S)
 
-    edit_url = br.get_url()
+    edit_url = br.get_url(tab=tab)
     if "/sign-in" in edit_url or "/sign-up" in edit_url:
         raise RuntimeError(
             "Substack redirected to sign-in. Your Chrome's Substack "
@@ -111,7 +116,7 @@ def create_draft(
     else:
         # Substack hadn't allocated a draft yet — give it one more chance.
         time.sleep(PAGE_LOAD_WAIT_S)
-        edit_url = br.get_url()
+        edit_url = br.get_url(tab=tab)
         m = EDIT_URL_PATTERN.search(edit_url)
         if m:
             draft_id = m.group(1)
@@ -126,7 +131,7 @@ def create_draft(
     # 2. Type title.
     if title:
         try:
-            br.type_text(TITLE_SELECTOR, title)
+            br.type_text(TITLE_SELECTOR, title, tab=tab)
         except Exception as e:
             raise RuntimeError(
                 f"substack: title field not found ({TITLE_SELECTOR!r}). "
@@ -137,7 +142,7 @@ def create_draft(
     if subtitle:
         for sel in SUBTITLE_SELECTOR_CANDIDATES:
             try:
-                br.type_text(sel, subtitle)
+                br.type_text(sel, subtitle, tab=tab)
                 break
             except Exception:
                 # Subtitle is optional — try next candidate; if all fail
@@ -146,17 +151,19 @@ def create_draft(
 
     # 4. Type body.
     try:
-        br.type_text(BODY_SELECTOR, body)
+        br.type_text(BODY_SELECTOR, body, tab=tab)
     except Exception as e:
         raise RuntimeError(
             f"substack: body editor not found ({BODY_SELECTOR!r}). "
             f"Update BODY_SELECTOR in {__file__}. Original: {e}"
         ) from e
 
-    # 5. Let autosave land.
+    # 5. Let autosave land. We don't click any Publish button — user
+    # reviews + clicks "Publish" themselves.
     time.sleep(AUTOSAVE_WAIT_S)
 
     return {
         "draft_url": edit_url,
         "external_id": draft_id,
+        "tab_id": tab,
     }

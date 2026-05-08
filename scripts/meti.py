@@ -50,8 +50,10 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     sub_browser.add_argument(
         "action",
-        choices=["status", "login", "doctor"],
+        choices=["status", "login", "doctor", "bind", "unbind"],
         help="status: extension connectivity check; "
+        "bind: anchor meti to your CURRENT Chrome tab/window (run from a regular tab); "
+        "unbind: detach meti without closing your tab; "
         "login: open provider's login URL in your Chrome (informational only — "
         "your Chrome session is what meti drives); "
         "doctor: full opencli diagnostic",
@@ -500,18 +502,7 @@ def cmd_browser(args: argparse.Namespace) -> int:
         except br.BrowserNotInstalledError as e:
             print(f"ERROR  {e}", file=sys.stderr)
             return 2
-        if connected:
-            try:
-                st = br.state()
-                url = st.get("url", st.get("_raw", "?"))
-                title = st.get("title", "")
-                print(f"OK  Browser Bridge connected. Current tab: {url}")
-                if title:
-                    print(f"    title: {title}")
-            except br.MetiError as e:
-                print(f"ERROR  {e}", file=sys.stderr)
-                return 2
-        else:
+        if not connected:
             print(
                 "✖  Browser Bridge extension not connected.\n"
                 "Install: https://chromewebstore.google.com/detail/opencli/"
@@ -520,6 +511,40 @@ def cmd_browser(args: argparse.Namespace) -> int:
                 file=sys.stderr,
             )
             return 2
+        bound = br.is_bound()
+        print(f"OK  Browser Bridge connected. Workspace `{br.WORKSPACE}` bound: {bound}")
+        if bound:
+            try:
+                tabs = br.tab_list()
+                print(f"    {len(tabs)} tab(s) in the bound window")
+                for t in tabs[:5]:
+                    print(f"      - {t.get('url','?')[:90]}")
+            except br.MetiError as e:
+                print(f"    (could not list tabs: {e})")
+        else:
+            print("    Run `meti browser bind` from a Chrome tab to anchor meti there.")
+        return 0
+
+    if action == "bind":
+        try:
+            br.bind()
+        except br.MetiError as e:
+            print(f"ERROR  {e}", file=sys.stderr)
+            return 2
+        try:
+            tabs = br.tab_list()
+            current = next((t for t in tabs if t.get("active")), None) or (tabs[0] if tabs else {})
+            url = current.get("url", "?")
+        except br.MetiError:
+            url = "(unknown)"
+        print(f"OK  Bound `{br.WORKSPACE}` to your Chrome window.")
+        print(f"    Current tab: {url}")
+        print("    Subsequent meti operations will run in this window.")
+        return 0
+
+    if action == "unbind":
+        br.unbind()
+        print(f"OK  Detached `{br.WORKSPACE}`. Your Chrome tab(s) are untouched.")
         return 0
 
     if action == "login":

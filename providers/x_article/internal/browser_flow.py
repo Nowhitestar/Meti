@@ -61,28 +61,32 @@ POST_CLICK_WAIT_S = 3.0
 AUTOSAVE_WAIT_S = 4.0
 
 
-def _try_click_first_match(candidates: list[str]) -> tuple[str | None, Exception | None]:
+def _try_click_first_match(
+    candidates: list[str], *, tab: str | None = None
+) -> tuple[str | None, Exception | None]:
     """Try each selector in order; return (clicked_selector, last_error)."""
     from core import browser as br
 
     last_err: Exception | None = None
     for sel in candidates:
         try:
-            br.click(sel)
+            br.click(sel, tab=tab)
             return sel, None
         except Exception as e:
             last_err = e
     return None, last_err
 
 
-def _try_type_first_match(candidates: list[str], text: str) -> tuple[str | None, Exception | None]:
+def _try_type_first_match(
+    candidates: list[str], text: str, *, tab: str | None = None
+) -> tuple[str | None, Exception | None]:
     """Try each selector in order to type text; return (used_selector, last_error)."""
     from core import browser as br
 
     last_err: Exception | None = None
     for sel in candidates:
         try:
-            br.type_text(sel, text)
+            br.type_text(sel, text, tab=tab)
             return sel, None
         except Exception as e:
             last_err = e
@@ -92,11 +96,17 @@ def _try_type_first_match(candidates: list[str], text: str) -> tuple[str | None,
 def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     """Save an X Article as a draft on the user's account.
 
-    Returns ``{"draft_url": <url>, "external_id": <draft-id>}`` where
-    ``draft-id`` is the numeric ID X assigns to the article in its URL.
+    Opens a fresh tab in meti's bound Chrome workspace, drives that tab
+    only, and leaves it open at the editor URL when done. X auto-saves
+    while we type, so no explicit save click is needed; the draft is
+    persistent on the platform once we've typed in it.
+
+    Returns ``{"draft_url": <url>, "external_id": <draft-id>, "tab_id": <id>}``
+    where ``draft-id`` is the numeric ID X assigns to the article in its URL.
 
     Raises:
-        BrowserNotConnectedError / BrowserNotInstalledError: bridge issues
+        BrowserNotConnectedError / BrowserNotBoundError / BrowserNotInstalledError:
+            bridge issues — caller should fall back / surface to user.
         RuntimeError: selector failures, login redirect, etc.
     """
     from core import browser as br
@@ -106,11 +116,11 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     if not body:
         raise ValueError("payload.body is required")
 
-    # 1. Open drafts list.
-    br.open_url(COMPOSE_ARTICLES_URL)
+    # 1. Open a fresh tab so this provider doesn't trample others.
+    tab = br.tab_new(COMPOSE_ARTICLES_URL)
     time.sleep(PAGE_LOAD_WAIT_S)
 
-    current_url = br.get_url()
+    current_url = br.get_url(tab=tab)
     if "i/flow/login" in current_url:
         raise RuntimeError(
             "X redirected to login. Your Chrome's X session is logged out. "
@@ -120,7 +130,7 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
 
     # 2. Click "Write" button. With existing drafts the button looks
     # different; we fall back through known shapes.
-    clicked_sel, err = _try_click_first_match(WRITE_BUTTON_CANDIDATES)
+    clicked_sel, err = _try_click_first_match(WRITE_BUTTON_CANDIDATES, tab=tab)
     if clicked_sel is None:
         raise RuntimeError(
             "x compose/articles: 'Write new' button not found. "
@@ -132,7 +142,7 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     time.sleep(POST_CLICK_WAIT_S)
 
     # 3. Capture draft ID from URL.
-    edit_url = br.get_url()
+    edit_url = br.get_url(tab=tab)
     m = EDIT_URL_PATTERN.search(edit_url)
     draft_id: str | None = None
     if m:
@@ -140,7 +150,7 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     else:
         # Editor may have loaded but URL hasn't updated yet — try once more.
         time.sleep(POST_CLICK_WAIT_S)
-        edit_url = br.get_url()
+        edit_url = br.get_url(tab=tab)
         m = EDIT_URL_PATTERN.search(edit_url)
         if m:
             draft_id = m.group(1)
@@ -153,7 +163,7 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
 
     # 4. Type title (if provided).
     if title:
-        used_sel, err = _try_type_first_match(TITLE_SELECTOR_CANDIDATES, title)
+        used_sel, err = _try_type_first_match(TITLE_SELECTOR_CANDIDATES, title, tab=tab)
         if used_sel is None:
             raise RuntimeError(
                 "x compose/articles: title field not found. "
@@ -164,17 +174,19 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
 
     # 5. Type body.
     try:
-        br.type_text(BODY_SELECTOR, body)
+        br.type_text(BODY_SELECTOR, body, tab=tab)
     except Exception as e:
         raise RuntimeError(
             f"x compose/articles: body composer not found ({BODY_SELECTOR!r}). "
             f"Update selector in {__file__}. Original: {e}"
         ) from e
 
-    # 6. Let autosave land.
+    # 6. Let autosave land. We don't click any "Save Draft" button —
+    # the user reviews + clicks "Publish" themselves in their browser.
     time.sleep(AUTOSAVE_WAIT_S)
 
     return {
         "draft_url": edit_url,
         "external_id": draft_id,
+        "tab_id": tab,
     }

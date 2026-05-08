@@ -243,14 +243,19 @@ _JS_INJECT_IMAGE_TPL = """(async () => {
 def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     """Create a 贴图 draft on the user's WeChat OA.
 
-    Returns ``{"draft_url": <url>, "external_id": <appmsgid>}``.
+    Opens a fresh tab in meti's bound Chrome workspace, drives that tab
+    only, and clicks 保存为草稿 (per-platform: this DOES persist the
+    draft server-side, which is fine and useful — WeChat MP drafts sync
+    cross-device, so user gets it on phone too).
+
+    Returns ``{"draft_url": <url>, "external_id": <appmsgid>, "tab_id": <id>}``.
 
     Args:
         payload: dict with ``title``, ``caption`` (or ``body``),
                  ``images`` (list of absolute paths)
 
     Raises:
-        BrowserNotConnectedError / BrowserNotInstalledError: bridge issues
+        BrowserNotConnectedError / BrowserNotBoundError / BrowserNotInstalledError
         RuntimeError: selector failures, login redirect, upload failures
         ValueError: missing required payload fields
     """
@@ -265,10 +270,10 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     if len(images) > 9:
         raise ValueError(f"贴图 supports up to 9 images, got {len(images)}")
 
-    # 1. Bounce off MP root to discover the session token.
-    br.open_url(MP_HOME_URL)
+    # 1. Open MP root in a fresh tab to discover the session token.
+    tab = br.tab_new(MP_HOME_URL)
     time.sleep(PAGE_LOAD_WAIT_S)
-    home_url = br.get_url()
+    home_url = br.get_url(tab=tab)
     if "/sign" in home_url or "login" in home_url.lower():
         raise RuntimeError(
             "MP redirected to sign-in. Your Chrome's MP session is logged out. "
@@ -283,12 +288,12 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
         )
     token = m.group(1)
 
-    # 2. Open 贴图 editor (action=add allocates a fresh draft).
+    # 2. Navigate same tab to 贴图 editor (action=add allocates a fresh draft).
     editor_url = EDITOR_URL_TPL.format(token=token)
-    br.open_url(editor_url)
+    br.open_url(editor_url, tab=tab)
     time.sleep(PAGE_LOAD_WAIT_S)
 
-    ready_raw = br.evaluate(_JS_EDITOR_READY)
+    ready_raw = br.evaluate(_JS_EDITOR_READY, tab=tab)
     ready = _parse_eval(ready_raw)
     if not ready.get("ready"):
         raise RuntimeError(
@@ -301,15 +306,11 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
 
     # 3. Upload each image in order.
     for idx, image_path in enumerate(images):
-        _upload_one_image(image_path, idx)
+        _upload_one_image(image_path, idx, tab=tab)
 
-    # 4. Set title. We focus the textarea + use execCommand('insertText')
-    # which fires beforeinput → input events that MP's dirty-state
-    # tracker recognizes. Plain `value =` setter doesn't dirty React
-    # state on this page; opencli's `type` was also unreliable on the
-    # ``appmsg_edit_v2`` template.
+    # 4. Set title via execCommand('insertText') for React dirty-state.
     if title:
-        title_raw = br.evaluate(_js_set_title(title))
+        title_raw = br.evaluate(_js_set_title(title), tab=tab)
         title_res = _parse_eval(title_raw)
         if not title_res.get("ok"):
             raise RuntimeError(
@@ -318,9 +319,9 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
             )
 
     # 5. Type caption (if any). Body is a ProseMirror; focus it via JS,
-    # then use opencli's `type` to send real keystrokes that React reads.
+    # then dispatch insertText.
     if caption:
-        focus_raw = br.evaluate(_JS_FOCUS_BODY)
+        focus_raw = br.evaluate(_JS_FOCUS_BODY, tab=tab)
         focus = _parse_eval(focus_raw)
         if not focus.get("focused"):
             raise RuntimeError(
@@ -328,22 +329,15 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
                 f"Editor count: {focus.get('count')}. Update _JS_FOCUS_BODY "
                 f"in {__file__}."
             )
-        # Type via real keyboard events. We can't pass a CSS selector
-        # since we already focused the right element via JS — opencli's
-        # `type` requires a target, but we can target the focused
-        # element by re-passing the same selector and letting `type`
-        # click+focus before typing. Use the body PM selector that's
-        # the LAST visible ProseMirror.
         try:
-            # Ambiguous selector; use --nth via direct eval-then-keys
-            # workaround: dispatch InputEvent with the caption text.
-            # ProseMirror listens on beforeinput / input.
-            br.evaluate(_js_dispatch_text(caption))
+            br.evaluate(_js_dispatch_text(caption), tab=tab)
         except Exception as e:
             raise RuntimeError(f"贴图: could not insert caption into body editor: {e}") from e
 
-    # 6. Click "保存为草稿".
-    save_raw = br.evaluate(_JS_CLICK_SAVE)
+    # 6. Click "保存为草稿". This persists the draft server-side so it
+    # syncs to user's other devices. We do NOT click "发表" / Publish —
+    # the user reviews + ships from their own browser.
+    save_raw = br.evaluate(_JS_CLICK_SAVE, tab=tab)
     save = _parse_eval(save_raw)
     if not save.get("clicked"):
         raise RuntimeError(
@@ -352,11 +346,10 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     time.sleep(SAVE_WAIT_S)
 
     # 7. Re-extract appmsgid (MP rewrites URL on save success).
-    final_url = br.get_url()
+    final_url = br.get_url(tab=tab)
     final_id = _extract_appmsgid(final_url) or appmsgid
     if not final_id:
-        # Last-ditch: ask the page directly.
-        latest_raw = br.evaluate(_JS_GET_APPMSGID)
+        latest_raw = br.evaluate(_JS_GET_APPMSGID, tab=tab)
         latest = _parse_eval(latest_raw)
         final_id = latest.get("appmsgid")
         final_url = latest.get("url", final_url)
@@ -369,6 +362,7 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     return {
         "draft_url": final_url,
         "external_id": str(final_id),
+        "tab_id": tab,
     }
 
 
@@ -409,7 +403,7 @@ def _extract_appmsgid(url: str) -> str | None:
     return m.group(1) if m else None
 
 
-def _upload_one_image(image_path: str, idx: int) -> None:
+def _upload_one_image(image_path: str, idx: int, *, tab: str | None = None) -> None:
     """Inject a single image and wait for MP to upload + acknowledge."""
     from core import browser as br
 
@@ -431,7 +425,7 @@ def _upload_one_image(image_path: str, idx: int) -> None:
 
     b64 = base64.b64encode(p.read_bytes()).decode("ascii")
     js = _js_inject_image(b64, p.name, mime)
-    raw = br.evaluate(js)
+    raw = br.evaluate(js, tab=tab)
     parsed = _parse_eval(raw)
     if not parsed.get("ok"):
         result = parsed.get("result") or {}

@@ -60,6 +60,7 @@ def test_create_draft_caps_at_nine_images(fake_image):
 def test_create_draft_login_redirect_raises(fake_image):
     """If MP redirects to sign-in, surface a clear RuntimeError."""
     with (
+        patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch(
             "core.browser.get_url",
@@ -73,6 +74,7 @@ def test_create_draft_login_redirect_raises(fake_image):
 def test_create_draft_no_token_raises(fake_image):
     """If MP home URL has no token=..., surface a clear RuntimeError."""
     with (
+        patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", return_value="https://mp.weixin.qq.com/"),
     ):
@@ -85,6 +87,7 @@ def test_create_draft_editor_not_ready_raises(fake_image):
     home = "https://mp.weixin.qq.com/cgi-bin/home?token=999&lang=zh_CN"
     editor = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=add&type=77&token=999&lang=zh_CN"
     with (
+        patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
         patch(
@@ -140,6 +143,7 @@ def test_create_draft_happy_path(fake_image):
     )
 
     with (
+        patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch(
             "core.browser.get_url",
@@ -179,6 +183,7 @@ def test_create_draft_image_upload_failure(fake_image):
         ]
     )
     with (
+        patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
         patch("core.browser.evaluate", side_effect=lambda *_a, **_k: next(eval_returns)),
@@ -196,6 +201,7 @@ def test_image_too_large_rejected(tmp_path):
     editor = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
 
     with (
+        patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
         patch(
@@ -212,6 +218,7 @@ def test_image_not_found_raises(tmp_path):
     home = "https://mp.weixin.qq.com/cgi-bin/home?token=999&lang=zh_CN"
     editor = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
     with (
+        patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
         patch(
