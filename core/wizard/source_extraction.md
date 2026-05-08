@@ -7,9 +7,10 @@ You are guiding the user to convert source content into a structured draft.
 
 Produce an internal draft holding these fields (in your conversation memory, not on disk yet):
 
-- `type`: one of `image-post` / `longform` / `video-post`
+- `type`: one of `image-post` / `longform` / `thread` / `video-post`
 - `title`: short title
-- `body`: full content (Markdown for longform; caption text for image-post)
+- `body`: full content (Markdown for longform; caption text for image-post;
+  for `thread`: tweets separated by a line containing only `---`)
 - `summary`: optional one-line synopsis
 - `cover`: optional path to a cover image
 - `images`: list of image paths (image-post only)
@@ -23,6 +24,8 @@ Produce an internal draft holding these fields (in your conversation memory, not
 2. **Determine `type`** by what's there:
    - Multiple images + short caption → `image-post`
    - Long markdown article → `longform`
+   - Several short text segments (each ≤280 chars), or content already
+     separated by lines of `---` with the user mentioning X/Twitter → `thread`
    - Video file → `video-post`
    - Ambiguous → ask one short question
 3. **Extract candidate fields** silently. Do not fabricate; if a field is unknown, leave it None.
