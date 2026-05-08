@@ -2,6 +2,33 @@
 
 All notable changes to Meti are documented here. Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.4.3 — 2026-05-08
+
+XHS browser-flow real-account verified — found two selector issues
+that 0.4.1's pre-launch selectors couldn't predict, fixed both.
+
+### Fixed (xiaohongshu)
+
+- **File input selector swaps after first image upload.** XHS's
+  initial `input.upload-input` element disappears once the first
+  image is selected; further uploads come through a different hidden
+  `<input type=file>`. v0.4.1 only knew the initial selector, so the
+  second image always failed with "no file input". v0.4.3 walks a
+  candidate list in order and filters out the PDF/doc input that
+  XHS keeps in the same DOM (`accept` attr screen).
+- **Save-draft button text is "暂存离开"** on the image-post editor
+  (lit. "save and leave"), not "存草稿" / "保存". Added to
+  `SAVE_BUTTON_TEXTS` candidates.
+
+### Verified
+
+End-to-end real-account test (manifest with 2 images + title +
+caption + tags): draft lands in user's 创作服务平台 → 草稿箱 with
+correct title/thumbnail/timestamp. XHS itself confirms drafts are
+"存储于当前使用的浏览器本地" (anchored to the user's browser
+session) — which is exactly why v0.4.1 made the XHS browser-flow
+the critical path instead of writing local JSON.
+
 ## 0.4.2 — 2026-05-08
 
 Hotfix: drop the `meti browser bind` requirement. v0.4.1 made bind

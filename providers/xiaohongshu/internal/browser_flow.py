@@ -48,9 +48,17 @@ from typing import Any
 # `?target=image` lands on the "上传图文" tab without a tab-click.
 EDITOR_URL = "https://creator.xiaohongshu.com/publish/publish?target=image"
 
-# File input for image upload. Verified empirically: class `upload-input`,
-# accept=".jpg,.jpeg,.png,.webp", multiple=true, visible in DOM.
-FILE_INPUT_SELECTOR = "input.upload-input[type=file]"
+# File input for image upload. XHS swaps the input element after the
+# first image is selected: the initial `input.upload-input` disappears
+# and a different (hidden) input under `.top` takes over for adding
+# more images. We probe candidates in order; first match with the right
+# accept attribute wins.
+FILE_INPUT_SELECTOR_CANDIDATES = [
+    "input.upload-input[type=file]",
+    'input[type=file][accept*="jpg"][multiple]',
+    'input[type=file][accept*="jpg"]',
+    'input[type=file][accept*="png"]',
+]
 
 # After upload, the editor expands to show title + body + actions.
 # Selectors are candidates; the first match wins. Update when XHS drifts.
@@ -66,8 +74,10 @@ BODY_SELECTOR_CANDIDATES = [
     "div.ql-editor",  # in case XHS swaps to Quill
     '[contenteditable="true"][role="textbox"]',
 ]
-# "存草稿" / Save Draft button text-match.
-SAVE_BUTTON_TEXTS = ["存草稿", "保存", "Save", "Save Draft"]
+# Save-draft button text-match. XHS uses "暂存离开" (lit. "save and
+# leave") on the image-post editor; older / other surfaces may use
+# "存草稿" or "保存".
+SAVE_BUTTON_TEXTS = ["暂存离开", "存草稿", "保存", "Save", "Save Draft"]
 
 PAGE_LOAD_WAIT_S = 5.0
 UPLOAD_WAIT_S = 10.0  # per image; XHS server processes each
@@ -79,15 +89,20 @@ SAVE_WAIT_S = 4.0
 # ---------------------------------------------------------------------------
 
 _JS_EDITOR_PROBE = """(() => {
-  const fileInput = document.querySelector('input.upload-input[type=file]');
+  // Probe ANY file input (visible or not) accepting images.
+  const fileInputs = Array.from(document.querySelectorAll('input[type=file]'))
+    .filter(i => {
+      const a = (i.accept || '').toLowerCase();
+      return a.includes('jpg') || a.includes('jpeg') || a.includes('png') || a.includes('webp');
+    });
   const tabs = Array.from(document.querySelectorAll('.creator-tab')).map(t => ({
     text: (t.textContent || '').trim(),
     active: t.classList.contains('active'),
   }));
   return JSON.stringify({
     url: location.href,
-    fileInputFound: !!fileInput,
-    fileInputAccept: fileInput ? fileInput.accept : null,
+    fileInputFound: fileInputs.length > 0,
+    fileInputCount: fileInputs.length,
     tabActive: tabs.find(t => t.active)?.text || null,
   });
 })()"""
@@ -101,7 +116,9 @@ def _js_inject_image(b64_data: str, filename: str, mime: str) -> str:
     resolves once the response lands.
     """
     payload = {"b64": b64_data, "name": filename, "mime": mime}
-    return _JS_INJECT_IMAGE_TPL.replace("__PAYLOAD__", json.dumps(payload))
+    js = _JS_INJECT_IMAGE_TPL.replace("__PAYLOAD__", json.dumps(payload))
+    js = js.replace("__CANDIDATES__", json.dumps(FILE_INPUT_SELECTOR_CANDIDATES))
+    return js
 
 
 _JS_INJECT_IMAGE_TPL = """(async () => {
@@ -112,7 +129,25 @@ _JS_INJECT_IMAGE_TPL = """(async () => {
   const blob = new Blob([bytes], {type: payload.mime});
   const file = new File([blob], payload.name, {type: payload.mime});
 
-  const target = document.querySelector('input.upload-input[type=file]');
+  // XHS swaps the file input element after the first upload. Walk the
+  // candidate selectors in order; reject inputs whose `accept` only
+  // covers PDF/doc (XHS has a hidden `.file-relation-container` input
+  // for those) — we want image inputs only.
+  const cands = __CANDIDATES__;
+  let target = null;
+  for (const sel of cands) {
+    const els = Array.from(document.querySelectorAll(sel));
+    for (const el of els) {
+      const accept = (el.accept || '').toLowerCase();
+      if (!accept) continue;
+      // Heuristic: if accept contains an image extension, accept it.
+      if (accept.includes('jpg') || accept.includes('jpeg') || accept.includes('png') || accept.includes('webp')) {
+        target = el;
+        break;
+      }
+    }
+    if (target) break;
+  }
   if (!target) return JSON.stringify({ok: false, error: 'no file input'});
 
   // Hook upload XHR to know when it lands. XHS CDN endpoints include
@@ -291,9 +326,10 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     probe = _parse_eval(probe_raw)
     if not probe.get("fileInputFound"):
         raise RuntimeError(
-            f"XHS editor: no `{FILE_INPUT_SELECTOR}` found. "
+            f"XHS editor: no image-accepting `<input type=file>` found. "
+            f"Tried selectors: {FILE_INPUT_SELECTOR_CANDIDATES}. "
             f"State: {probe}. XHS may have changed UI; update "
-            f"FILE_INPUT_SELECTOR in {__file__}."
+            f"FILE_INPUT_SELECTOR_CANDIDATES in {__file__}."
         )
 
     # 3. Upload each image.
