@@ -518,7 +518,7 @@ def cmd_browser(args: argparse.Namespace) -> int:
                 tabs = br.tab_list()
                 print(f"    {len(tabs)} tab(s) in the bound window")
                 for t in tabs[:5]:
-                    print(f"      - {t.get('url','?')[:90]}")
+                    print(f"      - {t.get('url', '?')[:90]}")
             except br.MetiError as e:
                 print(f"    (could not list tabs: {e})")
         else:
