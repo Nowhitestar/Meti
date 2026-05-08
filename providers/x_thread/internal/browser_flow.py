@@ -35,14 +35,19 @@ from typing import Any
 COMPOSE_POST_URL = "https://x.com/compose/post"
 
 # Per-tweet textarea. <n> is the 0-based tweet index in the thread.
-TEXTAREA_TEMPLATE = '[data-testid="tweetTextarea_{n}"]'
+# Scoped to the compose modal — bare `[data-testid="tweetTextarea_0"]`
+# matches the home-feed inline composer too, raising selector_ambiguous.
+TEXTAREA_TEMPLATE = '[role="dialog"] [data-testid="tweetTextarea_{n}"]'
 
 # "Add another tweet" button. Sits under the *last* composer; clicking
 # it appends a new tweet textarea and bumps the index.
+# Scoped to the compose modal for the same reason as TEXTAREA_TEMPLATE —
+# the home-feed inline composer also exposes an addButton, and opencli
+# click silently picks the first match.
 ADD_BUTTON_CANDIDATES = [
-    '[data-testid="addButton"]',
-    'button[aria-label="Add post"]',
-    'button[aria-label="添加帖子"]',
+    '[role="dialog"] [data-testid="addButton"]',
+    '[role="dialog"] button[aria-label="Add post"]',
+    '[role="dialog"] button[aria-label="添加帖子"]',
 ]
 
 # After the modal opens, X redirects login-less sessions here.
@@ -50,7 +55,10 @@ LOGIN_PATH_FRAGMENTS = ("/i/flow/login", "/login")
 
 PAGE_LOAD_WAIT_S = 3.0
 POST_CLICK_WAIT_S = 1.5
-TYPE_SETTLE_WAIT_S = 0.8
+# X's compose modal lazy-renders the "Add post" button after the first
+# textarea has non-empty content — 0.8s isn't enough on slower DOMs to
+# let React commit and reveal addButton. 2.5s gives it room.
+TYPE_SETTLE_WAIT_S = 2.5
 
 
 def _try_click_first_match(
@@ -104,7 +112,12 @@ def compose_thread(payload: dict[str, Any]) -> dict[str, Any]:
             f"Current URL: {current_url}"
         )
 
-    # 2. Type tweet #1 into the first textarea.
+    # 2. Type tweet #1 into the first textarea via OpenCLI `type`
+    # (native CDP keyboard) — the only insertion path that reliably
+    # commits to X's Draft.js editor state. `fill` (wholesale set +
+    # verify) reports verified but the Draft.js state stays empty,
+    # which means addButton never lazy-renders and the thread can't
+    # advance. See post.js in @jackwener/opencli for the same finding.
     first_sel = TEXTAREA_TEMPLATE.format(n=0)
     try:
         br.type_text(first_sel, tweets[0], tab=tab)
@@ -116,17 +129,45 @@ def compose_thread(payload: dict[str, Any]) -> dict[str, Any]:
         ) from e
     time.sleep(TYPE_SETTLE_WAIT_S)
 
-    # 3. For each subsequent tweet: click "+" then type into the new
-    # textarea that just appeared.
+    # 3. For each subsequent tweet: a11y-activate the *last* "+" button
+    # then type into the new textarea.
+    #
+    # Why a11y instead of click: X's "Add post" button rejects
+    # programmatic clicks (both opencli `click` and JS `element.click()`
+    # trip an anti-automation guard that resets the composer). Focusing
+    # the button and pressing Enter is the keyboard-accessibility path
+    # — X has to honor it, otherwise screen-reader users couldn't
+    # compose threads. We always target the *last* addButton because
+    # each spawn appends a new one below the freshest textarea.
+    focus_last_add_js = (
+        "(() => {"
+        " const btns = document.querySelectorAll("
+        "  '[role=\"dialog\"] [data-testid=\"addButton\"]'"
+        " );"
+        " const btn = btns[btns.length - 1];"
+        " if (!btn) return JSON.stringify({ok: false, reason: 'no_add_button'});"
+        " btn.focus();"
+        " return JSON.stringify({ok: document.activeElement === btn});"
+        "})()"
+    )
+
     for idx in range(1, len(tweets)):
-        clicked_sel, err = _try_click_first_match(ADD_BUTTON_CANDIDATES, tab=tab)
-        if clicked_sel is None:
+        focus_result = br.evaluate(focus_last_add_js, tab=tab)
+        # OpenCLI `eval` returns the JSON string in `result`; check for failure.
+        focus_payload = (focus_result or {}).get("result", "")
+        if "no_add_button" in str(focus_payload):
             raise RuntimeError(
                 f"x compose/post: 'Add post' button not found before tweet #{idx + 1}. "
-                f"Tried selectors: {ADD_BUTTON_CANDIDATES}. "
-                f"Update ADD_BUTTON_CANDIDATES in {__file__}. "
-                f"Last error: {err}"
+                f"X may have lazy-rendered it elsewhere or you're not in thread mode. "
+                f"Update focus_last_add_js in {__file__}."
             )
+        try:
+            br.keys("Enter", tab=tab)
+        except Exception as e:
+            raise RuntimeError(
+                f"x compose/post: Enter on focused addButton failed before tweet #{idx + 1}. "
+                f"Original: {e}"
+            ) from e
         time.sleep(POST_CLICK_WAIT_S)
 
         next_sel = TEXTAREA_TEMPLATE.format(n=idx)
@@ -135,7 +176,7 @@ def compose_thread(payload: dict[str, Any]) -> dict[str, Any]:
         except Exception as e:
             raise RuntimeError(
                 f"x compose/post: tweet #{idx + 1} textarea not found ({next_sel!r}). "
-                f"Add button click may not have spawned a new composer. "
+                f"Focus+Enter on addButton may not have spawned a new composer. "
                 f"Original: {e}"
             ) from e
         time.sleep(TYPE_SETTLE_WAIT_S)
