@@ -68,7 +68,7 @@ def test_execute_draft_stub_when_bridge_disconnected(article, tmp_path, monkeypa
     p = SubstackProvider()
     p.prepare(article, article.targets[0], run_dir)
 
-    with patch("core.browser.is_connected", return_value=False):
+    with patch("core.browser.ensure_bound", return_value=False):
         res = p.execute(run_dir, article.targets[0], mode="draft", credentials={})
 
     assert res.mode_actual == "stub"
@@ -86,7 +86,7 @@ def test_execute_draft_uses_publication_url_from_target_options(article, tmp_pat
     p.prepare(article, article.targets[0], run_dir)
 
     with (
-        patch("core.browser.is_connected", return_value=True),
+        patch("core.browser.ensure_bound", return_value=True),
         patch(
             "providers.substack.internal.browser_flow.create_draft",
             return_value={
@@ -112,7 +112,7 @@ def test_execute_draft_invokes_browser_flow(article, tmp_path, monkeypatch):
     p.prepare(article, article.targets[0], run_dir)
 
     with (
-        patch("core.browser.is_connected", return_value=True),
+        patch("core.browser.ensure_bound", return_value=True),
         patch(
             "providers.substack.internal.browser_flow.create_draft",
             return_value={

@@ -130,7 +130,7 @@ def test_execute_draft_returns_stub_when_bridge_disconnected(thread, tmp_path):
     p = XThreadProvider()
     p.prepare(thread, thread.targets[0], run_dir)
 
-    with patch("core.browser.is_connected", return_value=False):
+    with patch("core.browser.ensure_bound", return_value=False):
         res = p.execute(run_dir, thread.targets[0], mode="draft", credentials={})
 
     assert res.mode_actual == "stub"
@@ -149,7 +149,7 @@ def test_execute_draft_invokes_browser_flow_when_bridge_connected(thread, tmp_pa
     p.prepare(thread, thread.targets[0], run_dir)
 
     with (
-        patch("core.browser.is_connected", return_value=True),
+        patch("core.browser.ensure_bound", return_value=True),
         patch(
             "providers.x_thread.internal.browser_flow.compose_thread",
             return_value={

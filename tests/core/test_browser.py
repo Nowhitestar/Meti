@@ -49,19 +49,22 @@ def test_state_returns_parsed_json():
         assert result == {"url": "https://x.com", "title": "X"}
 
 
-def test_state_falls_back_to_npx_when_opencli_missing():
-    """If `opencli` not on PATH, use `npx -y @jackwener/opencli`."""
+def test_state_falls_back_to_modern_npx_when_opencli_missing():
+    """If `opencli` not on PATH, use a Node>=21 npx for OpenCLI."""
     with (
         patch(
             "core.browser.shutil.which",
             side_effect=lambda c: "/usr/bin/npx" if c == "npx" else None,
         ),
+        patch("core.browser._node_major_for_npx", return_value=24),
         patch("core.browser.subprocess.run") as mock_run,
     ):
         mock_run.return_value = _mock_run(stdout="{}", returncode=0)
         state()
         argv = mock_run.call_args[0][0]
-        assert argv[0] == "npx"
+        assert argv[0] == "/usr/bin/env"
+        assert argv[1].startswith("PATH=")
+        assert any(arg.endswith("/npx") or arg == "npx" for arg in argv)
         assert "-y" in argv
         assert "@jackwener/opencli" in argv
         assert "browser" in argv
@@ -69,7 +72,10 @@ def test_state_falls_back_to_npx_when_opencli_missing():
 
 
 def test_no_opencli_no_npx_raises_install_hint():
-    with patch("core.browser.shutil.which", return_value=None):
+    with (
+        patch("core.browser.shutil.which", return_value=None),
+        patch("core.browser.Path.exists", return_value=False),
+    ):
         with pytest.raises(BrowserNotInstalledError, match="Node.js"):
             state()
 
@@ -115,9 +121,11 @@ def test_open_url_invocation():
         )
         result = open_url("https://example.com")
         argv = mock_run.call_args[0][0]
-        # v0.4.2: open_url no longer requires bound workspace — uses
-        # browser:default automation by default.
-        assert argv[-2:] == ["open", "https://example.com"]
+        # Browser-flow navigation uses the visible bound workspace and must
+        # explicitly allow navigating that user-bound tab.
+        assert argv[-3:] == ["open", "https://example.com", "--allow-navigate-bound"]
+        assert "--workspace" in argv
+        assert "bound:meti" in argv
         assert result == {"target": "tab-1"}
 
 
@@ -157,7 +165,10 @@ def test_is_connected_false_when_extension_not_connected():
 
 
 def test_is_connected_false_when_no_opencli():
-    with patch("core.browser.shutil.which", return_value=None):
+    with (
+        patch("core.browser.shutil.which", return_value=None),
+        patch("core.browser.Path.exists", return_value=False),
+    ):
         assert is_connected() is False
 
 

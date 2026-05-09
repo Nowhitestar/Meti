@@ -100,6 +100,13 @@ class XiaohongshuProvider(Provider):
                 },
             )
 
+        # Auto-open a visible Chrome tab and bind it to bound:meti. This makes
+        # the flow visible and removes the manual "meti browser bind" step.
+        br.ensure_bound(
+            url="https://creator.xiaohongshu.com/publish/publish?target=image",
+            domain="creator.xiaohongshu.com",
+        )
+
         from providers.xiaohongshu.internal.browser_flow import create_draft
 
         try:

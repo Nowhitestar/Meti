@@ -26,6 +26,7 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from core.errors import ProviderExecutionError
 from core.provider import (
@@ -112,7 +113,12 @@ class SubstackProvider(Provider):
                 },
             )
 
-        if not br.is_connected():
+        bind_domain = urlparse(publication_url).netloc or None
+        try:
+            bound = br.ensure_bound(publication_url, domain=bind_domain)
+            if bound is False:
+                raise br.BrowserNotConnectedError("browser not connected")
+        except br.BrowserNotConnectedError:
             self._write_stub(pack_dir, reason="bridge-not-connected")
             return ExecutionResult(
                 status="ok",
@@ -126,6 +132,14 @@ class SubstackProvider(Provider):
                     ),
                 },
             )
+        except br.BrowserNotInstalledError as exc:
+            self._write_stub(pack_dir, reason="opencli-not-installed")
+            raise ProviderExecutionError(
+                target=self.name,
+                step="browser_bridge",
+                upstream=exc,
+                retryable=False,
+            ) from exc
 
         from providers.substack.internal.browser_flow import create_draft
 

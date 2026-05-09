@@ -101,6 +101,14 @@ class WeChatImageProvider(Provider):
                 },
             )
 
+        # Auto-open a visible Chrome tab and bind it to bound:meti. This makes
+        # the browser-flow visible and removes the manual "meti browser bind"
+        # step from normal publish runs.
+        br.ensure_bound(
+            url="https://mp.weixin.qq.com/",
+            domain="mp.weixin.qq.com",
+        )
+
         from providers.wechat_image.internal.browser_flow import create_draft
 
         try:

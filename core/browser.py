@@ -56,8 +56,12 @@ Error model
 from __future__ import annotations
 
 import json
+import os
+import platform
 import shutil
 import subprocess
+import time
+from pathlib import Path
 from typing import Any
 
 from core.errors import MetiError
@@ -88,12 +92,87 @@ class BrowserCommandError(MetiError):
     """An opencli browser subcommand failed unexpectedly."""
 
 
+def _node_major_for_npx(npx_path: str) -> int | None:
+    """Return the sibling node major version for an npx binary, if known."""
+    node = Path(npx_path).with_name("node")
+    if not node.exists():
+        return None
+    try:
+        proc = subprocess.run(
+            [str(node), "--version"], capture_output=True, text=True, timeout=5
+        )
+    except Exception:
+        return None
+    version = (proc.stdout or proc.stderr or "").strip().lstrip("v")
+    try:
+        return int(version.split(".", 1)[0])
+    except (ValueError, IndexError):
+        return None
+
+
+def _npx_candidates() -> list[str]:
+    """Candidate npx binaries, preferring Node >= 21.
+
+    The user's shell PATH may put an old nvm Node first. OpenCLI currently
+    requires Node >= 21, so blindly using `shutil.which("npx")` can make
+    `meti browser status` look connected while every real browser command
+    crashes inside undici. Prefer explicit modern Homebrew / nvm installs.
+    """
+    candidates: list[str] = []
+    first = shutil.which("npx")
+    if first:
+        candidates.append(first)
+    candidates.extend(
+        [
+            "/opt/homebrew/bin/npx",
+            "/usr/local/bin/npx",
+        ]
+    )
+    nvm = Path.home() / ".nvm" / "versions" / "node"
+    if nvm.exists():
+        for npx in sorted(nvm.glob("v*/bin/npx"), reverse=True):
+            candidates.append(str(npx))
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for c in candidates:
+        if c not in seen and Path(c).exists():
+            seen.add(c)
+            uniq.append(c)
+    return uniq
+
+
 def _opencli_argv() -> list[str]:
-    """Return the argv prefix that invokes opencli."""
-    if shutil.which("opencli"):
-        return ["opencli"]
-    if shutil.which("npx"):
-        return ["npx", "-y", _OPENCLI_PKG]
+    """Return the argv prefix that invokes opencli.
+
+    Prefer a verified Node>=21 `npx` even if an `opencli` binary exists: the
+    installed binary may be a shim that resolves through the user's older PATH
+    Node (Node 20 breaks current OpenCLI/undici). Fall back to `opencli` only
+    when no modern npx is available.
+    """
+    modern: list[str] = []
+    fallback: list[str] = []
+    for npx in _npx_candidates():
+        major = _node_major_for_npx(npx)
+        if major is not None and major >= 21:
+            modern.append(npx)
+        else:
+            fallback.append(npx)
+    if modern:
+        npx = modern[0]
+        bindir = str(Path(npx).parent)
+        env_path = f"PATH={bindir}:{os.environ.get('PATH', '')}"
+        return ["/usr/bin/env", env_path, npx, "-y", _OPENCLI_PKG]
+
+    opencli = shutil.which("opencli")
+    if opencli:
+        return [opencli]
+
+    if fallback:
+        raise BrowserNotInstalledError(
+            "OpenCLI requires Node.js >= 21, but the first available npx uses "
+            "an older Node. Install/activate a modern Node or put it earlier on PATH.\n"
+            f"Checked: {', '.join(fallback)}"
+        )
     raise BrowserNotInstalledError(
         "neither `opencli` nor `npx` is on PATH. Install Node.js >= 21:\n"
         "  brew install node          # macOS\n"
@@ -173,12 +252,7 @@ def bind(*, domain: str | None = None, path_prefix: str | None = None) -> dict[s
 
     The user must have Chrome focused on the tab they want meti to drive
     when this is called. Optional ``domain`` / ``path_prefix`` filters
-    let the user constrain which tab is acceptable to bind (used by
-    automation scripts that want to fail loudly rather than bind to the
-    wrong tab).
-
-    Idempotent: calling bind() when already bound rebinds to whatever
-    is currently focused.
+    constrain which tab is acceptable to bind.
     """
     args = ["bind", "--workspace", WORKSPACE]
     if domain:
@@ -186,6 +260,52 @@ def bind(*, domain: str | None = None, path_prefix: str | None = None) -> dict[s
     if path_prefix:
         args += ["--path-prefix", path_prefix]
     return _run(args, workspace=None)
+
+
+def _open_chrome_tab(url: str) -> None:
+    """Open a new visible tab in the user's real Chrome and focus it."""
+    if platform.system() == "Darwin":
+        subprocess.run(["open", "-a", "Google Chrome", url], check=False, timeout=10)
+        time.sleep(1.5)
+        return
+    # Linux fallback: xdg-open focuses the default browser if available.
+    opener = shutil.which("xdg-open") or shutil.which("google-chrome") or shutil.which("chromium")
+    if opener:
+        subprocess.run([opener, url], check=False, timeout=10)
+        time.sleep(1.5)
+
+
+def auto_bind(
+    url: str = "about:blank",
+    *,
+    domain: str | None = None,
+    path_prefix: str | None = None,
+    force: bool = False,
+) -> dict[str, Any]:
+    """Ensure ``bound:meti`` exists by opening a visible Chrome tab and binding it.
+
+    This is intentionally user-visible: Meti opens a real Chrome tab, then
+    asks OpenCLI to bind the current active tab to the workspace. Providers
+    can call this before browser-flow execution so publish runs do not stop
+    with "run meti browser bind".
+    """
+    if not force and is_bound():
+        return {"status": "already-bound"}
+    _open_chrome_tab(url)
+    return bind(domain=domain, path_prefix=path_prefix)
+
+
+def ensure_bound(
+    url: str = "about:blank",
+    *,
+    domain: str | None = None,
+    path_prefix: str | None = None,
+) -> bool:
+    """Auto-bind if needed, returning True or raising a clear bridge error."""
+    if is_bound():
+        return True
+    auto_bind(url=url, domain=domain, path_prefix=path_prefix, force=True)
+    return True
 
 
 def unbind() -> dict[str, Any]:
@@ -205,13 +325,15 @@ def is_bound() -> bool:
 
 
 def require_bound() -> None:
-    """Raise BrowserNotBoundError if not bound. Call this at the top of
-    flows that depend on the bound workspace existing."""
+    """Raise BrowserNotBoundError if bound:meti doesn't exist.
+
+    Most publish flows should prefer ``ensure_bound(...)`` so Meti opens
+    a visible tab automatically. Keep this strict helper for diagnostics.
+    """
     if not is_bound():
         raise BrowserNotBoundError(
             "meti is not bound to a Chrome tab yet.\n"
-            "1. Open Chrome and switch to the tab you want meti to use\n"
-            "2. Run: meti browser bind\n"
+            "Meti can usually auto-bind; otherwise open Chrome and run: meti browser bind\n"
             "Then retry."
         )
 
@@ -223,7 +345,7 @@ def require_bound() -> None:
 
 def tab_list() -> list[dict[str, Any]]:
     """List tabs in the bound workspace."""
-    raw = _run(["tab", "list"])
+    raw = _run(["tab", "list"], workspace=WORKSPACE)
     if isinstance(raw, list):
         return raw
     if "_raw" in raw:
@@ -245,7 +367,7 @@ def tab_new(url: str | None = None) -> str:
     args = ["tab", "new"]
     if url:
         args.append(url)
-    raw = _run(args)
+    raw = _run(args, workspace=WORKSPACE)
     # `tab new` prints the new tab's target id. Could be a plain string
     # or a JSON envelope depending on opencli version.
     if isinstance(raw, dict):
@@ -261,13 +383,13 @@ def tab_new(url: str | None = None) -> str:
 
 def tab_select(target_id: str) -> dict[str, Any]:
     """Make ``target_id`` the default tab in the bound workspace."""
-    return _run(["tab", "select", target_id])
+    return _run(["tab", "select", target_id], workspace=WORKSPACE)
 
 
 def tab_close(target_id: str) -> dict[str, Any]:
     """Close a tab by target id (use sparingly — meti's contract is to
     leave the user's tabs open after a publish run)."""
-    return _run(["tab", "close", target_id])
+    return _run(["tab", "close", target_id], workspace=WORKSPACE)
 
 
 # ---------------------------------------------------------------------------
@@ -291,14 +413,14 @@ def state(tab: str | None = None) -> dict[str, Any]:
     args = ["state"]
     if tab:
         args += ["--tab", tab]
-    return _run(args)
+    return _run(args, workspace=WORKSPACE)
 
 
 def get_url(tab: str | None = None) -> str:
     args = ["get", "url"]
     if tab:
         args += ["--tab", tab]
-    raw = _run(args)
+    raw = _run(args, workspace=WORKSPACE)
     if "_raw" in raw:
         return str(raw["_raw"]).strip()
     if "value" in raw:
@@ -310,7 +432,7 @@ def get_title(tab: str | None = None) -> str:
     args = ["get", "title"]
     if tab:
         args += ["--tab", tab]
-    raw = _run(args)
+    raw = _run(args, workspace=WORKSPACE)
     if "_raw" in raw:
         return str(raw["_raw"]).strip()
     if "value" in raw:
@@ -330,24 +452,24 @@ def open_url(url: str, tab: str | None = None) -> dict[str, Any]:
     a specific Chrome tab. In that case ``open_url`` is wrapped with
     ``--allow-navigate-bound`` (see core.browser.WORKSPACE).
     """
-    args = ["open", url]
+    args = ["open", url, "--allow-navigate-bound"]
     if tab:
         args += ["--tab", tab]
-    return _run(args)
+    return _run(args, workspace=WORKSPACE)
 
 
 def click(target: str, tab: str | None = None) -> dict[str, Any]:
     args = ["click", target]
     if tab:
         args += ["--tab", tab]
-    return _run(args)
+    return _run(args, workspace=WORKSPACE)
 
 
 def type_text(target: str, text: str, tab: str | None = None) -> dict[str, Any]:
     args = ["type", target, text]
     if tab:
         args += ["--tab", tab]
-    return _run(args)
+    return _run(args, workspace=WORKSPACE)
 
 
 def fill(target: str, text: str, tab: str | None = None) -> dict[str, Any]:
@@ -357,7 +479,7 @@ def fill(target: str, text: str, tab: str | None = None) -> dict[str, Any]:
     args = ["fill", target, text]
     if tab:
         args += ["--tab", tab]
-    return _run(args)
+    return _run(args, workspace=WORKSPACE)
 
 
 def keys(key: str, tab: str | None = None) -> dict[str, Any]:
@@ -366,7 +488,7 @@ def keys(key: str, tab: str | None = None) -> dict[str, Any]:
     args = ["keys", key]
     if tab:
         args += ["--tab", tab]
-    return _run(args)
+    return _run(args, workspace=WORKSPACE)
 
 
 def wait(kind: str, value: str | None = None, tab: str | None = None) -> dict[str, Any]:
@@ -375,37 +497,46 @@ def wait(kind: str, value: str | None = None, tab: str | None = None) -> dict[st
         args.append(value)
     if tab:
         args += ["--tab", tab]
-    return _run(args)
+    return _run(args, workspace=WORKSPACE)
 
 
 def evaluate(js: str, tab: str | None = None) -> dict[str, Any]:
     args = ["eval", js]
     if tab:
         args += ["--tab", tab]
-    return _run(args)
+    return _run(args, workspace=WORKSPACE)
 
 
 def screenshot(path: str, tab: str | None = None) -> dict[str, Any]:
     args = ["screenshot", path]
     if tab:
         args += ["--tab", tab]
-    return _run(args)
+    return _run(args, workspace=WORKSPACE)
 
 
 def find(selector: str, tab: str | None = None) -> dict[str, Any]:
     args = ["find", "--selector", selector]
     if tab:
         args += ["--tab", tab]
-    return _run(args)
+    return _run(args, workspace=WORKSPACE)
 
 
 def is_connected() -> bool:
-    """True iff opencli + extension are responsive (does NOT require
-    bound:meti to exist — use ``is_bound()`` for that)."""
+    """True iff opencli + extension are actually responsive.
+
+    This must be a real check. Older code used check=False around
+    `tab list`, which turned Node/OpenCLI crashes into false positives.
+    """
     try:
-        # `tab list` on a non-bound workspace returns either an empty
-        # list or fails with "not bound" — both confirm the bridge.
-        _run(["tab", "list"], workspace=None, check=False)
+        result = doctor()
+    except BrowserNotInstalledError:
+        return False
+    if not result.get("ok"):
+        return False
+    try:
+        _run(["tab", "list"], workspace=None, check=True, timeout=30)
         return True
-    except (BrowserNotInstalledError, BrowserNotConnectedError):
+    except BrowserCommandError:
+        return False
+    except BrowserNotConnectedError:
         return False

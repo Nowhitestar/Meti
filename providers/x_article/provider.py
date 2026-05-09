@@ -80,7 +80,11 @@ class XArticleProvider(Provider):
         payload_path = pack_dir / "payload.json"
         payload = json.loads(payload_path.read_text(encoding="utf-8"))
 
-        if not br.is_connected():
+        try:
+            bound = br.ensure_bound("https://x.com/i/articles", domain="x.com")
+            if bound is False:
+                raise br.BrowserNotConnectedError("browser not connected")
+        except br.BrowserNotConnectedError:
             self._write_stub(pack_dir, reason="bridge-not-connected")
             return ExecutionResult(
                 status="ok",
@@ -92,6 +96,14 @@ class XArticleProvider(Provider):
                     "see docs/browser-connectors.md",
                 },
             )
+        except br.BrowserNotInstalledError as exc:
+            self._write_stub(pack_dir, reason="opencli-not-installed")
+            raise ProviderExecutionError(
+                target=self.name,
+                step="browser_bridge",
+                upstream=exc,
+                retryable=False,
+            ) from exc
 
         from providers.x_article.internal.browser_flow import create_draft
 
