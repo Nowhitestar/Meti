@@ -305,9 +305,9 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
 
     appmsgid = ready.get("appmsgid")
 
-    # 3. Upload each image in order.
-    for idx, image_path in enumerate(images):
-        _upload_one_image(image_path, idx)
+    # 3. Upload all images in one browser injection. This mirrors a user
+    # selecting multiple files at once and avoids per-image fixed sleeps.
+    _upload_images_batch(images)
 
     # 4. Set title via execCommand('insertText') for React dirty-state.
     if title:
@@ -344,7 +344,11 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(
             f"贴图: failed to click '{SAVE_BUTTON_TEXT}' button: {save.get('reason', 'unknown')}"
         )
-    time.sleep(SAVE_WAIT_S)
+    _wait_for_js_condition(
+        _JS_SAVE_SETTLED,
+        timeout_s=SAVE_WAIT_S,
+        interval_s=0.25,
+    )
 
     # 7. Re-extract appmsgid (MP rewrites URL on save success).
     final_url = br.get_url()
@@ -434,6 +438,38 @@ def _upload_one_image(image_path: str, idx: int) -> None:
     time.sleep(UPLOAD_WAIT_S * 0.5)
 
 
+
+def _upload_images_batch(image_paths: list[str]) -> None:
+    """Inject all images at once and wait for MP to acknowledge/render them."""
+    from core import browser as br
+
+    files: list[dict[str, str]] = []
+    for idx, image_path in enumerate(image_paths):
+        p = Path(image_path).expanduser()
+        if not p.is_file():
+            raise FileNotFoundError(f"image not found: {image_path}")
+        mime, _ = mimetypes.guess_type(str(p))
+        mime = mime or "image/jpeg"
+        if not mime.startswith("image/"):
+            raise ValueError(f"not an image (mime={mime!r}): {image_path}")
+        size = p.stat().st_size
+        if size > 30 * 1024 * 1024:
+            raise ValueError(
+                f"image #{idx} ({p.name}) is {size / 1024 / 1024:.1f}MB; MP rejects > 30MB"
+            )
+        files.append({
+            "b64": base64.b64encode(p.read_bytes()).decode("ascii"),
+            "name": p.name,
+            "mime": mime,
+        })
+
+    parsed = _parse_eval(br.evaluate(_js_inject_images(files)))
+    if not parsed.get("ok"):
+        raise RuntimeError(f"贴图 batch image upload failed: {parsed}")
+    if int(parsed.get("uploaded", 0)) < len(files):
+        raise RuntimeError(f"贴图 batch image upload incomplete: {parsed}")
+
+
 def _js_set_title(text: str) -> str:
     """JS that sets the 贴图 title textarea via ``execCommand('insertText')``.
 
@@ -489,3 +525,114 @@ def _js_dispatch_text(text: str) -> str:
       el.dispatchEvent(evt);
       return JSON.stringify({{inserted: !evt.defaultPrevented, via: 'beforeinput'}});
     }})()"""
+
+
+
+def _wait_for_js_condition(js: str, *, timeout_s: float = 10.0, interval_s: float = 0.25) -> dict[str, Any]:
+    """Poll a JS probe until it returns ``{"ready": true}``."""
+    from core import browser as br
+
+    deadline = time.monotonic() + timeout_s
+    last: dict[str, Any] = {}
+    while True:
+        last = _parse_eval(br.evaluate(js))
+        if last.get("ready"):
+            return last
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"timed out waiting for browser condition: {last}")
+        time.sleep(interval_s)
+
+
+def _js_inject_images(files: list[dict[str, str]]) -> str:
+    return _JS_INJECT_IMAGES_TPL.replace("__PAYLOAD__", json.dumps({"files": files}))
+
+
+
+_JS_SAVE_SETTLED = r"""(() => {
+  const fromGlobal = (window.wx && wx.cgiData && wx.cgiData.app_id) || null;
+  const text = document.body ? document.body.innerText : '';
+  const busyText = /保存中|上传中|正在保存|loading/i.test(text);
+  const busyNode = document.querySelector('.loading, .spinner, [class*=loading], [class*=spin]');
+  const hasId = !!fromGlobal || /[?&]appmsgid=\d+/.test(location.href);
+  return JSON.stringify({ready: hasId && !busyText && !busyNode, appmsgid: fromGlobal, url: location.href});
+})()"""
+
+
+_JS_INJECT_IMAGES_TPL = """(async () => {
+  const payload = __PAYLOAD__;
+  const files = payload.files || [];
+  const expected = files.length;
+  if (!expected) return JSON.stringify({ok: false, error: 'no files', expected, uploaded: 0});
+
+  const countBodyImages = () => Array.from(document.querySelectorAll('.ProseMirror img, .js_editor img, img')).length;
+  const allInputs = Array.from(document.querySelectorAll('input[type=file]'));
+  const imageInputs = allInputs.filter(i => (i.accept || '').includes('image'));
+  const target = imageInputs.find(i => {
+    let p = i.parentElement;
+    while (p && p !== document.body) {
+      const c = (p.className || '').toString();
+      if (c.includes('tpl_dropdown_menu_item') || c.includes('weui-desktop-dropdown')) return false;
+      p = p.parentElement;
+    }
+    return true;
+  }) || imageInputs[imageInputs.length - 1] || allInputs[0];
+  if (!target) return JSON.stringify({ok: false, error: 'no file input found', expected, uploaded: 0});
+
+  const before = countBodyImages();
+  let completed = 0;
+  const uploadDone = new Promise((resolve) => {
+    const origOpen = XMLHttpRequest.prototype.open;
+    const origSend = XMLHttpRequest.prototype.send;
+    const restore = () => { XMLHttpRequest.prototype.open = origOpen; XMLHttpRequest.prototype.send = origSend; };
+    XMLHttpRequest.prototype.open = function(method, url) {
+      this.__mmpUrl = String(url || '');
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function() {
+      if ((this.__mmpUrl || '').includes('filetransfer') && (this.__mmpUrl || '').includes('upload_material')) {
+        const orig = this.onreadystatechange;
+        this.onreadystatechange = function() {
+          if (this.readyState === 4) {
+            try {
+              const body = JSON.parse(this.responseText || '{}');
+              const err = body.base_resp && body.base_resp.ret;
+              if (this.status === 200 && (!err || err === 0)) completed += 1;
+            } catch(e) {
+              if (this.status === 200) completed += 1;
+            }
+            if (completed >= expected) { restore(); resolve({completed, via: 'xhr'}); }
+          }
+          if (orig) try { orig.apply(this, arguments); } catch(e){}
+        };
+      }
+      return origSend.apply(this, arguments);
+    };
+    const started = Date.now();
+    const poll = () => {
+      const rendered = Math.max(0, countBodyImages() - before);
+      if (rendered >= expected) { restore(); resolve({completed: Math.max(completed, rendered), rendered, via: 'dom'}); return; }
+      if (Date.now() - started > 45000) { restore(); resolve({timeout: true, completed, rendered}); return; }
+      setTimeout(poll, 300);
+    };
+    setTimeout(poll, 300);
+  });
+
+  try {
+    const dt = new DataTransfer();
+    for (const item of files) {
+      const raw = atob(item.b64);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      const blob = new Blob([bytes], {type: item.mime});
+      dt.items.add(new File([blob], item.name, {type: item.mime}));
+    }
+    target.files = dt.files;
+  } catch (e) {
+    return JSON.stringify({ok: false, error: 'DataTransfer failed: ' + String(e), expected, uploaded: 0});
+  }
+  target.dispatchEvent(new Event('change', {bubbles: true}));
+
+  const result = await uploadDone;
+  const uploaded = result.completed || result.rendered || 0;
+  return JSON.stringify({ok: !result.timeout && uploaded >= expected, uploaded, expected, result});
+})()"""

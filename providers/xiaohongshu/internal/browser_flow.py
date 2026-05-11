@@ -332,9 +332,9 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
             f"FILE_INPUT_SELECTOR_CANDIDATES in {__file__}."
         )
 
-    # 3. Upload each image.
-    for idx, image_path in enumerate(images):
-        _upload_one_image(image_path, idx)
+    # 3. Upload all images in one browser injection. This mirrors a user
+    # selecting multiple files at once and avoids per-image fixed sleeps.
+    _upload_images_batch(images)
 
     # 4. Set title.
     if title:
@@ -370,7 +370,11 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
             f"XHS: failed to click save-draft button (tried texts "
             f"{SAVE_BUTTON_TEXTS}): {save.get('reason', save)}"
         )
-    time.sleep(SAVE_WAIT_S)
+    _wait_for_js_condition(
+        _JS_SAVE_SETTLED,
+        timeout_s=SAVE_WAIT_S,
+        interval_s=0.25,
+    )
 
     final_url = br.get_url()
 
@@ -429,3 +433,149 @@ def _upload_one_image(image_path: str, idx: int) -> None:
         )
     # Let XHS render the thumbnail before next upload.
     time.sleep(UPLOAD_WAIT_S * 0.4)
+
+
+
+def _upload_images_batch(image_paths: list[str]) -> None:
+    """Inject all images at once and wait for XHS to acknowledge/render them."""
+    from core import browser as br
+
+    files: list[dict[str, str]] = []
+    for idx, image_path in enumerate(image_paths):
+        p = Path(image_path).expanduser()
+        if not p.is_file():
+            raise FileNotFoundError(f"image not found: {image_path}")
+        mime, _ = mimetypes.guess_type(str(p))
+        mime = mime or "image/jpeg"
+        if not mime.startswith("image/"):
+            raise ValueError(f"not an image (mime={mime!r}): {image_path}")
+        size = p.stat().st_size
+        if size > 32 * 1024 * 1024:
+            raise ValueError(
+                f"image #{idx} ({p.name}) is {size / 1024 / 1024:.1f}MB; XHS rejects > 32MB"
+            )
+        files.append({
+            "b64": base64.b64encode(p.read_bytes()).decode("ascii"),
+            "name": p.name,
+            "mime": mime,
+        })
+
+    parsed = _parse_eval(br.evaluate(_js_inject_images(files)))
+    if not parsed.get("ok"):
+        raise RuntimeError(f"XHS batch image upload failed: {parsed}")
+    if int(parsed.get("uploaded", 0)) < len(files):
+        raise RuntimeError(f"XHS batch image upload incomplete: {parsed}")
+
+
+
+def _wait_for_js_condition(js: str, *, timeout_s: float = 10.0, interval_s: float = 0.25) -> dict[str, Any]:
+    """Poll a JS probe until it returns ``{"ready": true}``."""
+    from core import browser as br
+
+    deadline = time.monotonic() + timeout_s
+    last: dict[str, Any] = {}
+    while True:
+        last = _parse_eval(br.evaluate(js))
+        if last.get("ready"):
+            return last
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"timed out waiting for browser condition: {last}")
+        time.sleep(interval_s)
+
+
+def _js_inject_images(files: list[dict[str, str]]) -> str:
+    payload = json.dumps({"files": files, "candidates": FILE_INPUT_SELECTOR_CANDIDATES})
+    return _JS_INJECT_IMAGES_TPL.replace("__PAYLOAD__", payload)
+
+
+
+_JS_SAVE_SETTLED = r"""(() => {
+  const text = document.body ? document.body.innerText : '';
+  const busyText = /保存中|上传中|发布中|正在保存|loading/i.test(text);
+  const busyNode = document.querySelector('.loading, .spinner, [class*=loading], [class*=spin]');
+  return JSON.stringify({ready: !busyText && !busyNode, busyText, url: location.href});
+})()"""
+
+
+_JS_INJECT_IMAGES_TPL = """(async () => {
+  const payload = __PAYLOAD__;
+  const files = payload.files || [];
+  const cands = payload.candidates || [];
+  const expected = files.length;
+  if (!expected) return JSON.stringify({ok: false, error: 'no files', expected, uploaded: 0});
+
+  const countImages = () => Array.from(document.querySelectorAll(
+    '.upload-item, .image-item, .img-preview, .cover, img'
+  )).filter(el => {
+    const text = (el.textContent || '').toLowerCase();
+    const src = (el.getAttribute && (el.getAttribute('src') || '')) || '';
+    return !text.includes('avatar') && !src.includes('avatar');
+  }).length;
+
+  let target = null;
+  for (const sel of cands) {
+    const els = Array.from(document.querySelectorAll(sel));
+    for (const el of els) {
+      const accept = (el.accept || '').toLowerCase();
+      if (accept.includes('jpg') || accept.includes('jpeg') || accept.includes('png') || accept.includes('webp') || accept.includes('image')) {
+        target = el;
+        break;
+      }
+    }
+    if (target) break;
+  }
+  if (!target) return JSON.stringify({ok: false, error: 'no file input', expected, uploaded: 0});
+
+  const before = countImages();
+  let completed = 0;
+  const uploadDone = new Promise((resolve) => {
+    const origOpen = XMLHttpRequest.prototype.open;
+    const origSend = XMLHttpRequest.prototype.send;
+    const restore = () => { XMLHttpRequest.prototype.open = origOpen; XMLHttpRequest.prototype.send = origSend; };
+    XMLHttpRequest.prototype.open = function(method, url) {
+      this.__mmpUrl = String(url || '');
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function() {
+      const url = this.__mmpUrl || '';
+      if (url.includes('upload') || url.includes('cdn') || url.includes('fileserver') || url.includes('sns-img')) {
+        const orig = this.onreadystatechange;
+        this.onreadystatechange = function() {
+          if (this.readyState === 4) {
+            if (this.status >= 200 && this.status < 300) completed += 1;
+            if (completed >= expected) { restore(); resolve({completed, via: 'xhr'}); }
+          }
+          if (orig) try { orig.apply(this, arguments); } catch(e){}
+        };
+      }
+      return origSend.apply(this, arguments);
+    };
+    const started = Date.now();
+    const poll = () => {
+      const rendered = Math.max(0, countImages() - before);
+      if (rendered >= expected) { restore(); resolve({completed: Math.max(completed, rendered), rendered, via: 'dom'}); return; }
+      if (Date.now() - started > 45000) { restore(); resolve({timeout: true, completed, rendered}); return; }
+      setTimeout(poll, 300);
+    };
+    setTimeout(poll, 300);
+  });
+
+  try {
+    const dt = new DataTransfer();
+    for (const item of files) {
+      const raw = atob(item.b64);
+      const bytes = new Uint8Array(raw.length);
+      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+      const blob = new Blob([bytes], {type: item.mime});
+      dt.items.add(new File([blob], item.name, {type: item.mime}));
+    }
+    target.files = dt.files;
+  } catch (e) {
+    return JSON.stringify({ok: false, error: 'DataTransfer failed: ' + String(e), expected, uploaded: 0});
+  }
+  target.dispatchEvent(new Event('change', {bubbles: true}));
+
+  const result = await uploadDone;
+  const uploaded = result.completed || result.rendered || 0;
+  return JSON.stringify({ok: !result.timeout && uploaded >= expected, uploaded, expected, result});
+})()"""

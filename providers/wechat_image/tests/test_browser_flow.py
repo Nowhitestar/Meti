@@ -117,20 +117,8 @@ def test_create_draft_happy_path(fake_image):
             _eval_envelope(
                 {"ready": True, "titleVisible": True, "fileInputsCount": 3, "appmsgid": 42}
             ),
-            # 2. _js_inject_image (per image)
-            _eval_envelope(
-                {
-                    "ok": True,
-                    "result": {
-                        "status": 200,
-                        "body": {
-                            "base_resp": {"ret": 0},
-                            "content": "100099999",
-                            "cdn_url": "https://mmbiz.qpic.cn/...",
-                        },
-                    },
-                }
-            ),
+            # 2. _js_inject_images (batch image upload)
+            _eval_envelope({"ok": True, "uploaded": 1, "expected": 1}),
             # 3. _js_set_title
             _eval_envelope({"ok": True, "value": "test title", "fallback": False}),
             # 4. _JS_FOCUS_BODY
@@ -139,6 +127,8 @@ def test_create_draft_happy_path(fake_image):
             _eval_envelope({"inserted": True, "via": "execCommand"}),
             # 6. _JS_CLICK_SAVE
             _eval_envelope({"clicked": True}),
+            # 7. save-state probe
+            _eval_envelope({"ready": True, "appmsgid": "42"}),
         ]
     )
 
