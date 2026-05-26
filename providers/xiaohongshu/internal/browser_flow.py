@@ -42,6 +42,27 @@ import time
 from pathlib import Path
 from typing import Any
 
+class BrowserFlowError(RuntimeError):
+    """Structured provider-local browser-flow failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: str,
+        error_kind: str = "browser_flow",
+        recoverable: bool = True,
+        manual_recovery: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.error_code = error_code
+        self.error_kind = error_kind
+        self.recoverable = recoverable
+        self.manual_recovery = manual_recovery
+        self.details = details or {}
+        super().__init__(message)
+
+
 # ---------------------------------------------------------------------------
 # Constants — patch points when XHS drifts UI.
 # ---------------------------------------------------------------------------
@@ -319,20 +340,25 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     # 2. Verify we landed on the editor (not redirected to login).
     cur = br.get_url()
     if "/login" in cur or "/sso" in cur or "passport" in cur:
-        raise RuntimeError(
-            "XHS Creator redirected to login. Log in to "
-            "creator.xiaohongshu.com in Chrome, then retry. "
-            f"Current URL: {cur}"
+        raise BrowserFlowError(
+            "XHS Creator redirected to login. Log in to creator.xiaohongshu.com in Chrome, then retry.",
+            error_code="platform_login_required",
+            error_kind="browser_readiness",
+            recoverable=True,
+            manual_recovery="Log in to creator.xiaohongshu.com in Chrome, then run `meti resume <run-dir>`.",
+            details={"current_url": _redact_url(cur)},
         )
 
     probe_raw = br.evaluate(_JS_EDITOR_PROBE)
     probe = _parse_eval(probe_raw)
     if not probe.get("fileInputFound"):
-        raise RuntimeError(
-            f"XHS editor: no image-accepting `<input type=file>` found. "
-            f"Tried selectors: {FILE_INPUT_SELECTOR_CANDIDATES}. "
-            f"State: {probe}. XHS may have changed UI; update "
-            f"FILE_INPUT_SELECTOR_CANDIDATES in {__file__}."
+        raise BrowserFlowError(
+            f"XHS editor: no image-accepting `<input type=file>` found. State: {probe}.",
+            error_code="upload_selector_missing",
+            error_kind="recoverable",
+            recoverable=True,
+            manual_recovery="Inspect the XHS Creator editor and update FILE_INPUT_SELECTOR_CANDIDATES.",
+            details={"probe": probe},
         )
 
     # 3. Upload images in one browser-side selection. The payload is staged in
@@ -345,10 +371,12 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
         title_raw = br.evaluate(_js_set_title(title))
         title_res = _parse_eval(title_raw)
         if not title_res.get("ok"):
-            raise RuntimeError(
-                f"XHS: failed to set title (tried selectors "
-                f"{TITLE_SELECTOR_CANDIDATES}): "
-                f"{title_res.get('reason', title_res)}"
+            raise BrowserFlowError(
+                f"XHS: failed to set title (tried selectors {TITLE_SELECTOR_CANDIDATES}): {title_res.get('reason', title_res)}",
+                error_code="title_selector_missing",
+                error_kind="recoverable",
+                manual_recovery="Inspect the XHS title field selectors and retry.",
+                details={"title": title_res},
             )
 
     # 5. Set caption + tags.
@@ -360,10 +388,12 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
         body_raw = br.evaluate(_js_set_body(body_text))
         body_res = _parse_eval(body_raw)
         if not body_res.get("ok"):
-            raise RuntimeError(
-                f"XHS: failed to set caption (tried selectors "
-                f"{BODY_SELECTOR_CANDIDATES}): "
-                f"{body_res.get('reason', body_res)}"
+            raise BrowserFlowError(
+                f"XHS: failed to set caption (tried selectors {BODY_SELECTOR_CANDIDATES}): {body_res.get('reason', body_res)}",
+                error_code="body_selector_missing",
+                error_kind="recoverable",
+                manual_recovery="Inspect the XHS body editor selectors and retry.",
+                details={"body": body_res},
             )
 
     # 6. Click 存草稿 if XHS exposes the button. Current XHS Creator sometimes
@@ -380,9 +410,12 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
             interval_s=0.25,
         )
     elif save.get("reason") != "no save button found":
-        raise RuntimeError(
-            f"XHS: failed to click save-draft button (tried texts "
-            f"{SAVE_BUTTON_TEXTS}): {save.get('reason', save)}"
+        raise BrowserFlowError(
+            f"XHS: failed to click save-draft button (tried texts {SAVE_BUTTON_TEXTS}): {save.get('reason', save)}",
+            error_code="save_button_unavailable",
+            error_kind="recoverable",
+            manual_recovery="Inspect the XHS editor; if autosaved, locate the note in drafts, otherwise retry after UI selectors are updated.",
+            details={"save": save},
         )
 
     final_url = br.get_url()
@@ -479,11 +512,33 @@ def _upload_images_batch(image_paths: list[str]) -> None:
 
     payload = json.dumps({"files": files, "candidates": FILE_INPUT_SELECTOR_CANDIDATES})
     payload_key = br.stage_text_payload(payload, prefix="meti-xhs-upload")
+    staged = _parse_eval(br.evaluate(_js_staged_payload_ready(payload_key, expected_min_chunks=1)))
+    if not staged.get("ok"):
+        raise BrowserFlowError(
+            f"XHS chunk staging did not complete before upload: {staged}",
+            error_code="chunk_staging_incomplete",
+            error_kind="recoverable",
+            manual_recovery="Retry the draft run; if it repeats, reduce image count/size or inspect OpenCLI eval output.",
+            details={"staged": staged},
+        )
     parsed = _parse_eval(br.evaluate(_js_inject_images(payload_key)))
     if not parsed.get("ok"):
-        raise RuntimeError(f"XHS batch image upload failed: {parsed}")
+        code = "upload_selector_missing" if "no file input" in str(parsed) else "upload_incomplete"
+        raise BrowserFlowError(
+            f"XHS batch image upload failed: {parsed}",
+            error_code=code,
+            error_kind="recoverable",
+            manual_recovery="Inspect the XHS Creator editor and retry after upload controls are visible.",
+            details={"upload": parsed},
+        )
     if int(parsed.get("uploaded", 0)) < len(files):
-        raise RuntimeError(f"XHS batch image upload incomplete: {parsed}")
+        raise BrowserFlowError(
+            f"XHS batch image upload incomplete: {parsed}",
+            error_code="partial_upload_needs_review",
+            error_kind="review_needed",
+            manual_recovery="Inspect the current XHS editor tab; remove partial images or finish uploading manually before saving.",
+            details={"upload": parsed},
+        )
 
 
 
@@ -505,6 +560,23 @@ def _wait_for_js_condition(js: str, *, timeout_s: float = 10.0, interval_s: floa
 def _js_inject_images(payload_key: str) -> str:
     return _JS_INJECT_IMAGES_TPL.replace("__PAYLOAD_KEY__", json.dumps(payload_key))
 
+
+def _js_staged_payload_ready(payload_key: str, *, expected_min_chunks: int) -> str:
+    return f"""(() => {{
+      const key = {json.dumps(payload_key)};
+      const chunks = (window.__METI_CHUNK_PAYLOADS || {{}})[key];
+      const count = Array.isArray(chunks) ? chunks.length : 0;
+      return JSON.stringify({{ok: count >= {int(expected_min_chunks)}, key, chunks: count}});
+    }})()"""
+
+
+def _redact_url(url: str) -> str:
+    if not url:
+        return url
+    for marker in ("?", "#"):
+        if marker in url:
+            return url.split(marker, 1)[0] + marker + "…"
+    return url
 
 
 _JS_SAVE_SETTLED = r"""(() => {

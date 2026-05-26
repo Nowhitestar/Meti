@@ -1,11 +1,4 @@
-"""Unit tests for wechat_image.internal.browser_flow.
-
-These tests mock ``core.browser.*`` so they exercise the flow logic
-(URL construction, error paths, payload validation) without driving a
-real Chrome. End-to-end verification is in
-``docs/wechat-image-tietu-research.md`` and is run manually against a
-real account.
-"""
+"""Unit tests for wechat_image.internal.browser_flow."""
 
 from __future__ import annotations
 
@@ -20,14 +13,11 @@ from providers.wechat_image.internal import browser_flow as bf
 @pytest.fixture
 def fake_image(tmp_path):
     p = tmp_path / "shot.jpg"
-    # 1x1 jpeg-ish bytes (just to satisfy is_file + read).
-    p.write_bytes(b"\xff\xd8\xff\xd9")  # SOI + EOI
+    p.write_bytes(b"\xff\xd8\xff\xd9")
     return p
 
 
 def _eval_envelope(value: object) -> dict:
-    """Wrap a Python value the way opencli's `eval` would return it
-    after our JS does `JSON.stringify(...)`."""
     return {"_raw": json.dumps(value)}
 
 
@@ -52,27 +42,21 @@ def test_create_draft_requires_at_least_one_image():
 
 
 def test_create_draft_caps_at_nine_images(fake_image):
-    paths = [str(fake_image)] * 10
     with pytest.raises(ValueError, match="up to 9 images"):
-        bf.create_draft({"title": "t", "caption": "c", "images": paths})
+        bf.create_draft({"title": "t", "caption": "c", "images": [str(fake_image)] * 10})
 
 
 def test_create_draft_login_redirect_raises(fake_image):
-    """If MP redirects to sign-in, surface a clear RuntimeError."""
     with (
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
-        patch(
-            "core.browser.get_url",
-            return_value="https://mp.weixin.qq.com/cgi-bin/sign?",
-        ),
+        patch("core.browser.get_url", return_value="https://mp.weixin.qq.com/cgi-bin/loginpage"),
     ):
         with pytest.raises(RuntimeError, match="sign-in"):
             bf.create_draft({"title": "t", "caption": "c", "images": [str(fake_image)]})
 
 
 def test_create_draft_no_token_raises(fake_image):
-    """If MP home URL has no token=..., surface a clear RuntimeError."""
     with (
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
@@ -82,97 +66,72 @@ def test_create_draft_no_token_raises(fake_image):
             bf.create_draft({"title": "t", "caption": "c", "images": [str(fake_image)]})
 
 
-def test_create_draft_editor_not_ready_raises(fake_image):
-    """If the editor's title selector is missing, surface a clear error."""
+def test_create_draft_editor_not_ready_structured(fake_image):
     home = "https://mp.weixin.qq.com/cgi-bin/home?token=999&lang=zh_CN"
     editor = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=add&type=77&token=999&lang=zh_CN"
     with (
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
-        patch(
-            "core.browser.evaluate",
-            return_value=_eval_envelope({"ready": False, "fileInputsCount": 0}),
-        ),
+        patch("core.browser.evaluate", return_value=_eval_envelope({"ready": False, "fileInputsCount": 0})),
+        patch("time.sleep"),
     ):
-        with pytest.raises(RuntimeError, match="failed to load"):
+        with pytest.raises(bf.BrowserFlowError) as exc:
             bf.create_draft({"title": "t", "caption": "c", "images": [str(fake_image)]})
+    assert exc.value.error_code == "selector_drift"
 
 
-def test_create_draft_happy_path(fake_image):
-    """End-to-end happy path with all browser ops mocked.
-
-    Verifies that on success we extract ``appmsgid`` from the final URL
-    and return it as ``external_id``.
-    """
+def test_create_draft_happy_path_multi_image(fake_image):
     home = "https://mp.weixin.qq.com/cgi-bin/home?token=999&lang=zh_CN"
-    editor_after_alloc = (
-        "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
-    )
+    editor_after_alloc = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
     final_url = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
-
-    eval_returns = iter(
-        [
-            # 1. _JS_EDITOR_READY
-            _eval_envelope(
-                {"ready": True, "titleVisible": True, "fileInputsCount": 3, "appmsgid": 42}
-            ),
-            # 2. _js_inject_images (batch image upload)
-            _eval_envelope({"ok": True, "uploaded": 1, "expected": 1}),
-            # 3. _js_set_title
-            _eval_envelope({"ok": True, "value": "test title", "fallback": False}),
-            # 4. _JS_FOCUS_BODY
-            _eval_envelope({"focused": True, "currentText": ""}),
-            # 5. _js_dispatch_text
-            _eval_envelope({"inserted": True, "via": "execCommand"}),
-            # 6. _JS_CLICK_SAVE
-            _eval_envelope({"clicked": True}),
-            # 7. save-state probe
-            _eval_envelope({"ready": True, "appmsgid": "42"}),
-        ]
-    )
-
+    eval_returns = iter([
+        _eval_envelope({"ready": True, "titleVisible": True, "fileInputsCount": 3, "appmsgid": 42}),
+        _eval_envelope({"ok": True, "chunks": 2}),
+        _eval_envelope({"ok": True, "uploaded": 2, "expected": 2}),
+        _eval_envelope({"ok": True, "value": "test title", "fallback": False}),
+        _eval_envelope({"focused": True, "currentText": ""}),
+        _eval_envelope({"inserted": True, "via": "execCommand"}),
+        _eval_envelope({"clicked": True}),
+        _eval_envelope({"ready": True, "appmsgid": "42"}),
+    ])
     with (
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
-        patch(
-            "core.browser.get_url",
-            side_effect=[home, editor_after_alloc, final_url],
-        ),
+        patch("core.browser.get_url", side_effect=[home, editor_after_alloc, final_url]),
         patch("core.browser.stage_text_payload", return_value="payload-key"),
         patch("core.browser.evaluate", side_effect=lambda *_a, **_k: next(eval_returns)),
-        patch("time.sleep"),  # skip waits
+        patch("time.sleep"),
     ):
-        result = bf.create_draft(
-            {
-                "title": "test title",
-                "caption": "test caption",
-                "images": [str(fake_image)],
-            }
-        )
-
+        result = bf.create_draft({"title": "test title", "caption": "test caption", "images": [str(fake_image), str(fake_image)]})
     assert result["external_id"] == "42"
     assert "appmsgid=42" in result["draft_url"]
 
 
-def test_create_draft_image_upload_failure(fake_image):
-    """Upload XHR failure should surface as RuntimeError."""
+def test_create_draft_missing_upload_input_structured(fake_image):
     home = "https://mp.weixin.qq.com/cgi-bin/home?token=999&lang=zh_CN"
     editor = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
-    eval_returns = iter(
-        [
-            _eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42}),
-            _eval_envelope(
-                {
-                    "ok": False,
-                    "result": {
-                        "status": 200,
-                        "body": {"base_resp": {"ret": -1, "err_msg": "image too large"}},
-                    },
-                }
-            ),
-        ]
-    )
+    with (
+        patch("core.browser.tab_new", return_value="fake-tab"),
+        patch("core.browser.open_url"),
+        patch("core.browser.get_url", side_effect=[home, editor]),
+        patch("core.browser.evaluate", return_value=_eval_envelope({"ready": True, "fileInputsCount": 0, "appmsgid": 42})),
+        patch("time.sleep"),
+    ):
+        with pytest.raises(bf.BrowserFlowError) as exc:
+            bf.create_draft({"title": "t", "caption": "c", "images": [str(fake_image)]})
+    assert exc.value.error_code == "upload_selector_missing"
+    assert exc.value.recoverable is True
+
+
+def test_create_draft_upload_count_mismatch_needs_review(fake_image):
+    home = "https://mp.weixin.qq.com/cgi-bin/home?token=999&lang=zh_CN"
+    editor = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
+    eval_returns = iter([
+        _eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42}),
+        _eval_envelope({"ok": True, "chunks": 1}),
+        _eval_envelope({"ok": True, "uploaded": 1, "expected": 2}),
+    ])
     with (
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
@@ -181,25 +140,50 @@ def test_create_draft_image_upload_failure(fake_image):
         patch("core.browser.evaluate", side_effect=lambda *_a, **_k: next(eval_returns)),
         patch("time.sleep"),
     ):
-        with pytest.raises(RuntimeError, match="image upload"):
+        with pytest.raises(bf.BrowserFlowError) as exc:
+            bf.create_draft({"title": "t", "caption": "c", "images": [str(fake_image), str(fake_image)]})
+    assert exc.value.error_code == "partial_upload_needs_review"
+    assert exc.value.error_kind == "review_needed"
+
+
+def test_create_draft_save_timeout_requires_durable_evidence(fake_image):
+    home = "https://mp.weixin.qq.com/cgi-bin/home?token=999&lang=zh_CN"
+    editor = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&token=999"
+    eval_returns = iter([
+        _eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": None}),
+        _eval_envelope({"ok": True, "chunks": 1}),
+        _eval_envelope({"ok": True, "uploaded": 1, "expected": 1}),
+        _eval_envelope({"ok": True, "value": "t", "fallback": False}),
+        _eval_envelope({"focused": True, "currentText": ""}),
+        _eval_envelope({"inserted": True, "via": "execCommand"}),
+        _eval_envelope({"clicked": True}),
+        _eval_envelope({"ready": False}),
+    ])
+    with (
+        patch("core.browser.tab_new", return_value="fake-tab"),
+        patch("core.browser.open_url"),
+        patch("core.browser.get_url", side_effect=[home, editor, editor]),
+        patch("core.browser.stage_text_payload", return_value="payload-key"),
+        patch("core.browser.evaluate", side_effect=lambda *_a, **_k: next(eval_returns)),
+        patch("time.sleep"),
+        patch("time.monotonic", side_effect=[0, 10]),
+    ):
+        with pytest.raises(bf.BrowserFlowError) as exc:
             bf.create_draft({"title": "t", "caption": "c", "images": [str(fake_image)]})
+    assert exc.value.error_code == "save_timeout_needs_review"
+    assert exc.value.error_kind == "review_needed"
 
 
 def test_image_too_large_rejected(tmp_path):
-    """Files over 30MB should be rejected before the upload XHR even fires."""
     huge = tmp_path / "huge.jpg"
     huge.write_bytes(b"\0" * (31 * 1024 * 1024))
     home = "https://mp.weixin.qq.com/cgi-bin/home?token=999&lang=zh_CN"
     editor = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
-
     with (
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
-        patch(
-            "core.browser.evaluate",
-            return_value=_eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42}),
-        ),
+        patch("core.browser.evaluate", return_value=_eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42})),
         patch("time.sleep"),
     ):
         with pytest.raises(ValueError, match="MP rejects"):
@@ -213,17 +197,8 @@ def test_image_not_found_raises(tmp_path):
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
-        patch(
-            "core.browser.evaluate",
-            return_value=_eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42}),
-        ),
+        patch("core.browser.evaluate", return_value=_eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42})),
         patch("time.sleep"),
     ):
         with pytest.raises(FileNotFoundError):
-            bf.create_draft(
-                {
-                    "title": "t",
-                    "caption": "c",
-                    "images": [str(tmp_path / "missing.png")],
-                }
-            )
+            bf.create_draft({"title": "t", "caption": "c", "images": [str(tmp_path / "missing.png")]})

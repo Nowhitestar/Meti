@@ -78,8 +78,10 @@ def test_execute_draft_stub_when_bridge_disconnected(img_manifest, tmp_path):
     with patch("core.browser.is_connected", return_value=False):
         res = p.execute(run_dir, img_manifest.targets[0], mode="draft", credentials={})
 
-    assert res.status == "ok"
+    assert res.status == "failed"
     assert res.mode_actual == "stub"
+    assert res.error_code == "bridge_disconnected"
+    assert res.recoverable is True
     assert res.extras["connector_status"] == "bridge-not-connected"
     assert (pack_dir / "TODO-connector.md").exists()
 

@@ -89,9 +89,13 @@ class WeChatImageProvider(Provider):
         if not br.is_connected():
             self._write_stub(pack_dir, reason="bridge-not-connected")
             return ExecutionResult(
-                status="ok",
+                status="failed",
                 mode_actual="stub",
                 external_id=None,
+                error_code="bridge_disconnected",
+                error_kind="recoverable",
+                recoverable=True,
+                manual_recovery="Install/enable OpenCLI Browser Bridge, log in to mp.weixin.qq.com, then run `meti resume <run-dir>`.",
                 extras={
                     "connector_status": "bridge-not-connected",
                     "remediation": (

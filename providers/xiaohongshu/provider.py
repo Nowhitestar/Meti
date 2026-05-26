@@ -88,9 +88,13 @@ class XiaohongshuProvider(Provider):
         if not br.is_connected():
             self._write_stub(pack_dir, reason="bridge-not-connected")
             return ExecutionResult(
-                status="ok",
+                status="failed",
                 mode_actual="stub",
                 external_id=None,
+                error_code="bridge_disconnected",
+                error_kind="recoverable",
+                recoverable=True,
+                manual_recovery="Install/enable OpenCLI Browser Bridge, log in to creator.xiaohongshu.com, then run `meti resume <run-dir>`.",
                 extras={
                     "connector_status": "bridge-not-connected",
                     "remediation": (
@@ -107,10 +111,21 @@ class XiaohongshuProvider(Provider):
             domain="creator.xiaohongshu.com",
         )
 
-        from providers.xiaohongshu.internal.browser_flow import create_draft
+        from providers.xiaohongshu.internal.browser_flow import BrowserFlowError, create_draft
 
         try:
             result = create_draft(payload)
+        except BrowserFlowError as exc:
+            return ExecutionResult(
+                status="failed",
+                mode_actual="failed-needs-review" if exc.error_kind == "review_needed" else "partial",
+                external_id=None,
+                error_code=exc.error_code,
+                error_kind=exc.error_kind,
+                recoverable=exc.recoverable,
+                manual_recovery=exc.manual_recovery,
+                extras={"connector_status": "browser-error", "browser_flow": exc.details},
+            )
         except br.BrowserNotConnectedError as exc:
             self._write_stub(pack_dir, reason="bridge-not-connected")
             raise ProviderExecutionError(

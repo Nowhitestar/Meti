@@ -48,6 +48,28 @@ import time
 from pathlib import Path
 from typing import Any
 
+
+class BrowserFlowError(RuntimeError):
+    """Structured provider-local browser-flow failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: str,
+        error_kind: str = "browser_flow",
+        recoverable: bool = True,
+        manual_recovery: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.error_code = error_code
+        self.error_kind = error_kind
+        self.recoverable = recoverable
+        self.manual_recovery = manual_recovery
+        self.details = details or {}
+        super().__init__(message)
+
+
 # ---------------------------------------------------------------------------
 # Constants — patch points when MP drifts UI / URL shape.
 # ---------------------------------------------------------------------------
@@ -308,10 +330,22 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     ready_raw = br.evaluate(_JS_EDITOR_READY)
     ready = _parse_eval(ready_raw)
     if not ready.get("ready"):
-        raise RuntimeError(
+        raise BrowserFlowError(
             f"贴图 editor failed to load (no `{TITLE_SELECTOR}` found). "
             f"State: {ready}. MP may have drifted UI; update selectors in "
-            f"{__file__}."
+            f"{__file__}.",
+            error_code="selector_drift",
+            error_kind="recoverable",
+            manual_recovery="Inspect the current MP editor tab and update TITLE_SELECTOR / editor probes.",
+            details={"probe": ready},
+        )
+    if int(ready.get("fileInputsCount") or 0) <= 0:
+        raise BrowserFlowError(
+            "贴图 editor loaded but no upload input was found.",
+            error_code="upload_selector_missing",
+            error_kind="recoverable",
+            manual_recovery="Inspect the current MP editor tab and update the file input selector logic.",
+            details={"probe": ready},
         )
 
     appmsgid = ready.get("appmsgid")
@@ -369,7 +403,14 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
         # sufficient evidence and verify below via URL/global extraction.
         current_url = br.get_url()
         if not (_extract_appmsgid(current_url) or appmsgid):
-            raise
+            raise BrowserFlowError(
+                "贴图 save timed out before durable draft evidence appeared.",
+                error_code="save_timeout_needs_review",
+                error_kind="review_needed",
+                recoverable=True,
+                manual_recovery="Inspect the current MP editor tab; if the draft saved, resume after confirming it appears in drafts.",
+                details={"url": _redact_url(current_url)},
+            )
 
     # 7. Re-extract appmsgid (MP rewrites URL on save success).
     final_url = br.get_url()
@@ -425,6 +466,15 @@ def _parse_eval(envelope: dict[str, Any]) -> dict[str, Any]:
 def _extract_appmsgid(url: str) -> str | None:
     m = APPMSGID_RE.search(url or "")
     return m.group(1) if m else None
+
+
+def _redact_url(url: str) -> str:
+    if not url:
+        return url
+    for marker in ("?", "#"):
+        if marker in url:
+            return url.split(marker, 1)[0] + marker + "…"
+    return url
 
 
 def _upload_one_image(image_path: str, idx: int) -> None:
@@ -490,11 +540,33 @@ def _upload_images_batch(image_paths: list[str]) -> None:
 
     payload = json.dumps({"files": files})
     payload_key = br.stage_text_payload(payload, prefix="meti-wechat-upload")
+    staged = _parse_eval(br.evaluate(_js_staged_payload_ready(payload_key, expected_min_chunks=1)))
+    if not staged.get("ok"):
+        raise BrowserFlowError(
+            f"贴图 chunk staging did not complete before upload: {staged}",
+            error_code="chunk_staging_incomplete",
+            error_kind="recoverable",
+            manual_recovery="Retry the draft run; if it repeats, reduce image count/size or inspect OpenCLI eval output.",
+            details={"staged": staged},
+        )
     parsed = _parse_eval(br.evaluate(_js_inject_images(payload_key)))
     if not parsed.get("ok"):
-        raise RuntimeError(f"贴图 batch image upload failed: {parsed}")
+        code = "upload_selector_missing" if "no file input" in str(parsed) else "upload_incomplete"
+        raise BrowserFlowError(
+            f"贴图 batch image upload failed: {parsed}",
+            error_code=code,
+            error_kind="recoverable",
+            manual_recovery="Inspect the current MP editor tab and retry after confirming upload controls are visible.",
+            details={"upload": parsed},
+        )
     if int(parsed.get("uploaded", 0)) < len(files):
-        raise RuntimeError(f"贴图 batch image upload incomplete: {parsed}")
+        raise BrowserFlowError(
+            f"贴图 batch image upload incomplete: {parsed}",
+            error_code="partial_upload_needs_review",
+            error_kind="review_needed",
+            manual_recovery="Inspect the current MP editor tab; remove partial images or finish uploading manually before saving.",
+            details={"upload": parsed},
+        )
 
 
 def _js_set_title(text: str) -> str:
@@ -572,6 +644,15 @@ def _wait_for_js_condition(js: str, *, timeout_s: float = 10.0, interval_s: floa
 
 def _js_inject_images(payload_key: str) -> str:
     return _JS_INJECT_IMAGES_TPL.replace("__PAYLOAD_KEY__", json.dumps(payload_key))
+
+
+def _js_staged_payload_ready(payload_key: str, *, expected_min_chunks: int) -> str:
+    return f"""(() => {{
+      const key = {json.dumps(payload_key)};
+      const chunks = (window.__METI_CHUNK_PAYLOADS || {{}})[key];
+      const count = Array.isArray(chunks) ? chunks.length : 0;
+      return JSON.stringify({{ok: count >= {int(expected_min_chunks)}, key, chunks: count}});
+    }})()"""
 
 
 
