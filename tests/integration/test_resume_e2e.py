@@ -118,6 +118,42 @@ def test_resume_target_filter_only_reruns_chosen(tmp_path):
     assert "RESUME_RETRY  target=substack" not in resume_section
 
 
+def test_resume_retries_partial_and_review_needed_targets(tmp_path):
+    p = _run_mmp(
+        "publish",
+        str(FIXTURE),
+        env_extra={"METI_RUNS_DIR": str(tmp_path / "runs")},
+    )
+    assert p.returncode == 0, p.stderr
+    rd = next((tmp_path / "runs").iterdir())
+
+    result_path = rd / "result.json"
+    result = json.loads(result_path.read_text())
+    for t in result["targets"]:
+        if t["name"] == "x-article":
+            t["status"] = "partial"
+            t["mode_actual"] = "partial"
+            t["error_code"] = "selector_drift"
+        if t["name"] == "substack":
+            t["status"] = "failed"
+            t["mode_actual"] = "failed-needs-review"
+            t["error_code"] = "autosave_timeout_needs_review"
+    result_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
+
+    p = _run_mmp(
+        "resume",
+        str(rd),
+        env_extra={"METI_RUNS_DIR": str(tmp_path / "runs")},
+    )
+    assert p.returncode == 0, p.stderr
+
+    log = (rd / "publish-log.md").read_text()
+    resume_section = log.split("RESUME_START")[-1]
+    assert "RESUME_SKIP  target=wechat-article" in resume_section
+    assert "RESUME_RETRY  target=x-article" in resume_section
+    assert "RESUME_RETRY  target=substack" in resume_section
+
+
 def test_resume_missing_run_dir_errors(tmp_path):
     p = _run_mmp(
         "resume",

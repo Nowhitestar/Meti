@@ -39,6 +39,27 @@ import re
 import time
 from typing import Any
 
+
+class BrowserFlowError(RuntimeError):
+    """Structured provider-local browser-flow failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: str,
+        error_kind: str = "browser_flow",
+        recoverable: bool = True,
+        manual_recovery: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.error_code = error_code
+        self.error_kind = error_kind
+        self.recoverable = recoverable
+        self.manual_recovery = manual_recovery
+        self.details = details or {}
+        super().__init__(message)
+
 # URL pattern after Substack auto-allocates a draft.
 EDIT_URL_PATTERN = re.compile(r"/publish/post/(\d+)")
 
@@ -58,6 +79,30 @@ def _publish_url(publication_url: str) -> str:
     """Build the post-create URL from a publication base URL."""
     base = publication_url.rstrip("/")
     return f"{base}/publish/post"
+
+
+def _redact_url(url: str) -> str:
+    if not url:
+        return url
+    for marker in ("?", "#"):
+        if marker in url:
+            return url.split(marker, 1)[0] + marker + "…"
+    return url
+
+
+def _preflight_browser(publication_url: str) -> None:
+    from core import browser as br
+
+    diag = br.diagnose(platform_url=_publish_url(publication_url))
+    if not diag.ready:
+        raise BrowserFlowError(
+            diag.message,
+            error_code=diag.code,
+            error_kind="browser_readiness",
+            recoverable=diag.recoverable,
+            manual_recovery="; ".join(diag.next_actions),
+            details={"browser_diagnostic": diag.to_dict()},
+        )
 
 
 def create_draft(
@@ -96,6 +141,8 @@ def create_draft(
             "SUBSTACK_PUBLICATION_URL env var."
         )
 
+    _preflight_browser(publication_url)
+
     # 1. Navigate the bound tab to Substack's post composer. Substack
     # auto-allocates a draft and routes us to /publish/post/<id>.
     br.open_url(_publish_url(publication_url))
@@ -103,10 +150,14 @@ def create_draft(
 
     edit_url = br.get_url()
     if "/sign-in" in edit_url or "/sign-up" in edit_url:
-        raise RuntimeError(
+        raise BrowserFlowError(
             "Substack redirected to sign-in. Your Chrome's Substack "
             "session is logged out. Log in to Substack in Chrome, "
-            f"then retry. Current URL: {edit_url}"
+            f"then retry. Current URL: {_redact_url(edit_url)}",
+            error_code="platform_login_required",
+            error_kind="browser_readiness",
+            manual_recovery="Log in to Substack in Chrome, then run `meti resume <run-dir>`.",
+            details={"current_url": _redact_url(edit_url)},
         )
 
     m = EDIT_URL_PATTERN.search(edit_url)
@@ -121,11 +172,15 @@ def create_draft(
         if m:
             draft_id = m.group(1)
         else:
-            raise RuntimeError(
+            raise BrowserFlowError(
                 f"Substack didn't route to /publish/post/<id>. "
-                f"Current URL: {edit_url!r}. Possible causes: not the owner "
+                f"Current URL: {_redact_url(edit_url)!r}. Possible causes: not the owner "
                 f"of {publication_url}, publication doesn't exist, or "
-                f"Substack changed the create flow."
+                f"Substack changed the create flow.",
+                error_code="draft_url_missing",
+                error_kind="review_needed",
+                manual_recovery="Inspect the current Substack tab. If a post editor is open, copy its draft URL; otherwise verify publication_url and retry.",
+                details={"current_url": _redact_url(edit_url), "publication_url": publication_url},
             )
 
     # 2. Type title.
@@ -133,9 +188,13 @@ def create_draft(
         try:
             br.type_text(TITLE_SELECTOR, title)
         except Exception as e:
-            raise RuntimeError(
+            raise BrowserFlowError(
                 f"substack: title field not found ({TITLE_SELECTOR!r}). "
-                f"Update TITLE_SELECTOR in {__file__}. Original: {e}"
+                f"Update TITLE_SELECTOR in {__file__}. Original: {e}",
+                error_code="selector_drift",
+                error_kind="recoverable",
+                manual_recovery="Inspect the Substack editor and update TITLE_SELECTOR.",
+                details={"selector": TITLE_SELECTOR, "last_error": str(e)},
             ) from e
 
     # 3. Type subtitle (if provided).
@@ -153,13 +212,28 @@ def create_draft(
     try:
         br.type_text(BODY_SELECTOR, body)
     except Exception as e:
-        raise RuntimeError(
+        raise BrowserFlowError(
             f"substack: body editor not found ({BODY_SELECTOR!r}). "
-            f"Update BODY_SELECTOR in {__file__}. Original: {e}"
+            f"Update BODY_SELECTOR in {__file__}. Original: {e}",
+            error_code="selector_drift",
+            error_kind="recoverable",
+            manual_recovery="Inspect the Substack editor and update BODY_SELECTOR.",
+            details={"selector": BODY_SELECTOR, "last_error": str(e)},
         ) from e
 
     # 5. Let autosave land. We don't click any Publish button — user
     # reviews + clicks "Publish" themselves.
     time.sleep(AUTOSAVE_WAIT_S)
 
-    return {"draft_url": edit_url, "external_id": draft_id}
+    final_url = br.get_url()
+    final_match = EDIT_URL_PATTERN.search(final_url)
+    if not final_match:
+        raise BrowserFlowError(
+            "Substack autosave did not leave a durable draft/editor URL.",
+            error_code="autosave_timeout_needs_review",
+            error_kind="review_needed",
+            manual_recovery="Inspect the current Substack editor tab; if the draft exists, copy its URL, otherwise retry after rebinding.",
+            details={"current_url": _redact_url(final_url)},
+        )
+
+    return {"draft_url": final_url, "external_id": final_match.group(1) or draft_id}

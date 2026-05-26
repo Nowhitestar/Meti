@@ -66,7 +66,9 @@ def test_execute_draft_returns_stub_when_bridge_disconnected(article, tmp_path):
     with patch("core.browser.ensure_bound", return_value=False):
         res = p.execute(run_dir, article.targets[0], mode="draft", credentials={})
 
+    assert res.status == "failed"
     assert res.mode_actual == "stub"
+    assert res.error_code == "bridge_disconnected"
     assert res.extras["connector_status"] == "bridge-not-connected"
     assert "remediation" in res.extras
     todo = (run_dir / "packs" / "x-article" / "TODO-connector.md").read_text()

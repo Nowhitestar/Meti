@@ -34,6 +34,28 @@ import re
 import time
 from typing import Any
 
+
+class BrowserFlowError(RuntimeError):
+    """Structured provider-local browser-flow failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        error_code: str,
+        error_kind: str = "browser_flow",
+        recoverable: bool = True,
+        manual_recovery: str | None = None,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.error_code = error_code
+        self.error_kind = error_kind
+        self.recoverable = recoverable
+        self.manual_recovery = manual_recovery
+        self.details = details or {}
+        super().__init__(message)
+
+
 # X Articles entry URLs.
 COMPOSE_ARTICLES_URL = "https://x.com/compose/articles"
 EDIT_URL_PATTERN = re.compile(r"/compose/articles/edit/(\d+)")
@@ -59,6 +81,50 @@ BODY_SELECTOR = '[data-testid="composer"]'
 PAGE_LOAD_WAIT_S = 3.0
 POST_CLICK_WAIT_S = 3.0
 AUTOSAVE_WAIT_S = 4.0
+
+
+def _redact_url(url: str) -> str:
+    if not url:
+        return url
+    for marker in ("?", "#"):
+        if marker in url:
+            return url.split(marker, 1)[0] + marker + "…"
+    return url
+
+
+def _preflight_browser() -> None:
+    from core import browser as br
+
+    diag = br.diagnose(platform_url=COMPOSE_ARTICLES_URL)
+    if not diag.ready:
+        raise BrowserFlowError(
+            diag.message,
+            error_code=diag.code,
+            error_kind="browser_readiness",
+            recoverable=diag.recoverable,
+            manual_recovery="; ".join(diag.next_actions),
+            details={"browser_diagnostic": diag.to_dict()},
+        )
+
+
+def _wait_for_draft_url() -> tuple[str, str]:
+    from core import browser as br
+
+    last_url = ""
+    for _ in range(3):
+        last_url = br.get_url()
+        m = EDIT_URL_PATTERN.search(last_url)
+        if m:
+            return last_url, m.group(1)
+        time.sleep(POST_CLICK_WAIT_S)
+    raise BrowserFlowError(
+        "x compose/articles: clicked Write but URL didn't move to /edit/<id>.",
+        error_code="autosave_timeout_needs_review",
+        error_kind="review_needed",
+        recoverable=True,
+        manual_recovery="Inspect the current X Articles editor tab. If a draft is open, copy its URL, otherwise retry after rebinding with `meti browser bind`.",
+        details={"current_url": _redact_url(last_url)},
+    )
 
 
 def _try_click_first_match(candidates: list[str]) -> tuple[str | None, Exception | None]:
@@ -112,6 +178,10 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
     if not body:
         raise ValueError("payload.body is required")
 
+    # 0. Validate OpenCLI/Chrome/bound workspace state before writing into
+    # any potentially stale bound:meti tab.
+    _preflight_browser()
+
     # 1. Navigate the bound tab to X compose. Sequential single-tab
     # design — meti drives one tab through each provider in turn.
     br.open_url(COMPOSE_ARTICLES_URL)
@@ -119,67 +189,88 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
 
     current_url = br.get_url()
     if "i/flow/login" in current_url:
-        raise RuntimeError(
+        raise BrowserFlowError(
             "X redirected to login. Your Chrome's X session is logged out. "
             "Log in to X in Chrome, then retry. "
-            f"Current URL: {current_url}"
+            f"Current URL: {_redact_url(current_url)}",
+            error_code="platform_login_required",
+            error_kind="browser_readiness",
+            manual_recovery="Log in to X in Chrome, then run `meti resume <run-dir>`.",
+            details={"current_url": _redact_url(current_url)},
+        )
+    if "subscribe" in current_url.lower() or "premium" in current_url.lower():
+        raise BrowserFlowError(
+            "X Articles appears gated by Premium or account capability.",
+            error_code="capability_gated",
+            error_kind="capability_gating",
+            recoverable=False,
+            manual_recovery="Confirm the account has X Premium/Articles access, or remove the x-article target.",
+            details={"current_url": _redact_url(current_url)},
         )
 
     # 2. Click "Write" button. With existing drafts the button looks
     # different; we fall back through known shapes.
     clicked_sel, err = _try_click_first_match(WRITE_BUTTON_CANDIDATES)
     if clicked_sel is None:
-        raise RuntimeError(
+        raise BrowserFlowError(
             "x compose/articles: 'Write new' button not found. "
             f"Tried selectors: {WRITE_BUTTON_CANDIDATES}. "
             f"Update WRITE_BUTTON_CANDIDATES in {__file__}. "
-            f"Last error: {err}"
+            f"Last error: {err}",
+            error_code="selector_drift",
+            error_kind="recoverable",
+            manual_recovery="Inspect the X Articles compose page and update WRITE_BUTTON_CANDIDATES.",
+            details={"selectors": WRITE_BUTTON_CANDIDATES, "last_error": str(err)},
         )
 
     time.sleep(POST_CLICK_WAIT_S)
 
     # 3. Capture draft ID from URL.
-    edit_url = br.get_url()
-    m = EDIT_URL_PATTERN.search(edit_url)
-    draft_id: str | None = None
-    if m:
-        draft_id = m.group(1)
-    else:
-        # Editor may have loaded but URL hasn't updated yet — try once more.
-        time.sleep(POST_CLICK_WAIT_S)
-        edit_url = br.get_url()
-        m = EDIT_URL_PATTERN.search(edit_url)
-        if m:
-            draft_id = m.group(1)
-        else:
-            raise RuntimeError(
-                f"x compose/articles: clicked Write but URL didn't move to "
-                f"/edit/<id>. Current URL: {edit_url!r}. "
-                f"X may have changed the create flow."
-            )
+    edit_url, draft_id = _wait_for_draft_url()
 
     # 4. Type title (if provided).
     if title:
         used_sel, err = _try_type_first_match(TITLE_SELECTOR_CANDIDATES, title)
         if used_sel is None:
-            raise RuntimeError(
+            raise BrowserFlowError(
                 "x compose/articles: title field not found. "
                 f"Tried selectors: {TITLE_SELECTOR_CANDIDATES}. "
                 f"Update TITLE_SELECTOR_CANDIDATES in {__file__}. "
-                f"Last error: {err}"
+                f"Last error: {err}",
+                error_code="selector_drift",
+                error_kind="recoverable",
+                manual_recovery="Inspect the X Articles editor and update TITLE_SELECTOR_CANDIDATES.",
+                details={"selectors": TITLE_SELECTOR_CANDIDATES, "last_error": str(err)},
             )
 
     # 5. Type body.
     try:
         br.type_text(BODY_SELECTOR, body)
     except Exception as e:
-        raise RuntimeError(
+        raise BrowserFlowError(
             f"x compose/articles: body composer not found ({BODY_SELECTOR!r}). "
-            f"Update selector in {__file__}. Original: {e}"
+            f"Update selector in {__file__}. Original: {e}",
+            error_code="selector_drift",
+            error_kind="recoverable",
+            manual_recovery="Inspect the X Articles editor and update BODY_SELECTOR.",
+            details={"selector": BODY_SELECTOR, "last_error": str(e)},
         ) from e
 
     # 6. Let autosave land. We don't click any "Save Draft" button —
     # the user reviews + clicks "Publish" themselves in their browser.
     time.sleep(AUTOSAVE_WAIT_S)
 
-    return {"draft_url": edit_url, "external_id": draft_id}
+    # Re-read after the autosave window so durable evidence reflects the final
+    # editor location and stale-tab issues surface before success.
+    final_url = br.get_url()
+    final_match = EDIT_URL_PATTERN.search(final_url)
+    if not final_match:
+        raise BrowserFlowError(
+            "X Articles autosave did not leave a durable draft/editor URL.",
+            error_code="autosave_timeout_needs_review",
+            error_kind="review_needed",
+            manual_recovery="Inspect the current X Articles tab; if the draft exists, copy its editor URL, otherwise retry after rebinding.",
+            details={"current_url": _redact_url(final_url)},
+        )
+
+    return {"draft_url": final_url, "external_id": final_match.group(1) or draft_id}

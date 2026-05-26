@@ -54,7 +54,9 @@ def test_execute_draft_stub_when_no_publication_url(article, tmp_path, monkeypat
     p = SubstackProvider()
     p.prepare(article, article.targets[0], run_dir)
     res = p.execute(run_dir, article.targets[0], mode="draft", credentials={})
+    assert res.status == "failed"
     assert res.mode_actual == "stub"
+    assert res.error_code == "missing_publication_url"
     assert res.extras["connector_status"] == "missing-publication-url"
     assert "publication_url" in res.extras["remediation"]
 
@@ -71,7 +73,9 @@ def test_execute_draft_stub_when_bridge_disconnected(article, tmp_path, monkeypa
     with patch("core.browser.ensure_bound", return_value=False):
         res = p.execute(run_dir, article.targets[0], mode="draft", credentials={})
 
+    assert res.status == "failed"
     assert res.mode_actual == "stub"
+    assert res.error_code == "bridge_disconnected"
     assert res.extras["connector_status"] == "bridge-not-connected"
 
 

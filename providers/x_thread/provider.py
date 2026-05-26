@@ -85,9 +85,13 @@ class XThreadProvider(Provider):
         except br.BrowserNotConnectedError:
             self._write_stub(pack_dir, reason="bridge-not-connected")
             return ExecutionResult(
-                status="ok",
+                status="failed",
                 mode_actual="stub",
                 external_id=None,
+                error_code="bridge_disconnected",
+                error_kind="recoverable",
+                recoverable=True,
+                manual_recovery="Install/enable OpenCLI Browser Bridge, log in to X, then run `meti resume <run-dir>`.",
                 extras={
                     "connector_status": "bridge-not-connected",
                     "remediation": (
@@ -105,10 +109,21 @@ class XThreadProvider(Provider):
                 retryable=False,
             ) from exc
 
-        from providers.x_thread.internal.browser_flow import compose_thread
+        from providers.x_thread.internal.browser_flow import BrowserFlowError, compose_thread
 
         try:
             result = compose_thread(payload)
+        except BrowserFlowError as exc:
+            return ExecutionResult(
+                status="failed",
+                mode_actual="failed-needs-review" if exc.error_kind == "review_needed" else "partial",
+                external_id=None,
+                error_code=exc.error_code,
+                error_kind=exc.error_kind,
+                recoverable=exc.recoverable,
+                manual_recovery=exc.manual_recovery,
+                extras={"connector_status": "browser-error", "browser_flow": exc.details},
+            )
         except br.BrowserNotConnectedError as exc:
             self._write_stub(pack_dir, reason="bridge-not-connected")
             raise ProviderExecutionError(
@@ -134,12 +149,16 @@ class XThreadProvider(Provider):
             ) from exc
 
         return ExecutionResult(
-            status="ok",
-            mode_actual="draft-platform",
+            status="failed" if result.get("review_needed") else "ok",
+            mode_actual="failed-needs-review" if result.get("review_needed") else "draft-platform",
             external_id=result.get("external_id"),
             draft_url=result.get("draft_url"),
+            error_code="thread_requires_review" if result.get("review_needed") else None,
+            error_kind="review_needed" if result.get("review_needed") else None,
+            recoverable=bool(result.get("review_needed")),
+            manual_recovery=result.get("manual_recovery"),
             extras={
-                "connector_status": "browser-ok",
+                "connector_status": "browser-review-needed" if result.get("review_needed") else "browser-ok",
                 "tweet_count": len(payload.get("tweets") or []),
             },
         )
