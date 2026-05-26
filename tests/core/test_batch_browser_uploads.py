@@ -15,7 +15,7 @@ def _write_png(path: Path) -> None:
         ("providers.wechat_image.internal.browser_flow", 30),
     ],
 )
-def test_upload_images_batch_injects_all_images_with_one_browser_eval(
+def test_upload_images_batch_stages_payload_then_runs_one_browser_eval(
     tmp_path, monkeypatch, module_name, max_mb
 ):
     module = __import__(module_name, fromlist=["dummy"])
@@ -24,24 +24,33 @@ def test_upload_images_batch_injects_all_images_with_one_browser_eval(
     _write_png(image1)
     _write_png(image2)
 
-    calls = []
+    staged = []
+    eval_calls = []
+
+    def fake_stage_text_payload(payload, **kwargs):
+        staged.append((payload, kwargs))
+        return "payload-key"
 
     def fake_evaluate(js):
-        calls.append(js)
+        eval_calls.append(js)
         return {"ok": True, "uploaded": 2, "expected": 2}
 
     import core.browser as br
 
+    monkeypatch.setattr(br, "stage_text_payload", fake_stage_text_payload)
     monkeypatch.setattr(br, "evaluate", fake_evaluate)
     monkeypatch.setattr(module.time, "sleep", lambda *_args, **_kwargs: pytest.fail("batch upload should not use fixed per-image sleep"))
 
     module._upload_images_batch([str(image1), str(image2)])
 
-    assert len(calls) == 1
-    assert "one.png" in calls[0]
-    assert "two.png" in calls[0]
-    assert "DataTransfer" in calls[0]
-    assert str(max_mb) in calls[0] or calls[0]
+    assert len(staged) == 1
+    assert "one.png" in staged[0][0]
+    assert "two.png" in staged[0][0]
+    assert str(max_mb) in staged[0][0] or staged[0][0]
+    assert staged[0][1]["prefix"].startswith("meti-")
+    assert len(eval_calls) == 1
+    assert "payload-key" in eval_calls[0]
+    assert "DataTransfer" in eval_calls[0]
 
 
 @pytest.mark.parametrize(
@@ -60,6 +69,7 @@ def test_upload_images_batch_rejects_partial_upload_ack(tmp_path, monkeypatch, m
 
     import core.browser as br
 
+    monkeypatch.setattr(br, "stage_text_payload", lambda _payload, **_kwargs: "payload-key")
     monkeypatch.setattr(br, "evaluate", lambda _js: {"ok": False, "uploaded": 1, "expected": 2})
 
     with pytest.raises(RuntimeError, match="batch image upload"):

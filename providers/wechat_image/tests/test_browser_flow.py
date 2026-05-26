@@ -139,6 +139,7 @@ def test_create_draft_happy_path(fake_image):
             "core.browser.get_url",
             side_effect=[home, editor_after_alloc, final_url],
         ),
+        patch("core.browser.stage_text_payload", return_value="payload-key"),
         patch("core.browser.evaluate", side_effect=lambda *_a, **_k: next(eval_returns)),
         patch("time.sleep"),  # skip waits
     ):
@@ -176,6 +177,7 @@ def test_create_draft_image_upload_failure(fake_image):
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
+        patch("core.browser.stage_text_payload", return_value="payload-key"),
         patch("core.browser.evaluate", side_effect=lambda *_a, **_k: next(eval_returns)),
         patch("time.sleep"),
     ):

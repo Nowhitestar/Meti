@@ -176,10 +176,12 @@ The 贴图 connector has a few wrinkles the other two don't:
    See `docs/wechat-image-tietu-research.md` for the full
    implementation notes.
 2. **Local-file upload**: unlike X / Substack drafts (text-only), 贴图
-   requires real images. We pass them through the page via base64 in
-   `eval` and reconstruct as a `Blob` → `File` → `DataTransfer.items.add`
-   → `input.files` setter → `change` event. MP's webuploader picks it
-   up the same as a real drag-drop.
+   requires real images. We stage the base64 payload into the page in
+   bounded chunks (`window.__METI_CHUNK_PAYLOADS`) to avoid OpenCLI/npm
+   argv limits, then reconstruct all images as `Blob` → `File` →
+   `DataTransfer.items.add` → `input.files` setter → `change` event in
+   one browser-side selection. MP's webuploader picks it up the same as
+   a real multi-file select.
 3. **`fingerprint` form field**: MP's save endpoint expects a 32-char
    MD5 in the body that's generated inside MP's own seajs modules.
    We let MP handle this by populating the DOM and clicking MP's own "保存为草稿" button — the page's existing save flow runs end-to-end and signs the request itself.
@@ -201,10 +203,10 @@ If MP changes UI:
 - Your X / Substack / WeChat MP cookies live in **your** Chrome, not
   in meti.
 - meti doesn't read cookie databases or copy login state.
-- For `wechat-image`, image bytes are passed to the page via base64 in
-  the `eval` channel; they only live in the page memory of the editor
-  tab and the upload XHR to `mp.weixin.qq.com`. meti never persists
-  them outside the run-dir's pack folder.
+- For `wechat-image`, image bytes are staged into the editor page in
+  bounded base64 chunks and reconstructed in page memory before the
+  upload XHR to `mp.weixin.qq.com`. This avoids OS/OpenCLI argv limits;
+  meti never persists them outside the run-dir's pack folder.
 - `result.json` and `publish-log.md` only record draft URLs and IDs
   — no session tokens.
 - The OpenCLI extension only acts when you (or meti on your behalf)

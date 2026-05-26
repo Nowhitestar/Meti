@@ -316,12 +316,10 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
 
     appmsgid = ready.get("appmsgid")
 
-    # 3. Upload images one by one. Batch injection is fast, but 9 l-card
-    # PNGs create a huge `opencli browser eval` payload that can crash npm
-    # with `RangeError: Maximum call stack size exceeded`. The per-image
-    # path keeps each eval small and is reliable against MP.
-    for idx, image in enumerate(images, start=1):
-        _upload_one_image(image, idx)
+    # 3. Upload images in one browser-side selection. The payload is staged in
+    # chunks first, so we avoid OpenCLI/npm argv limits while preserving the
+    # fast multi-file DataTransfer path.
+    _upload_images_batch(images)
 
     # 4. Set title via execCommand('insertText') for React dirty-state.
     if title:
@@ -490,7 +488,9 @@ def _upload_images_batch(image_paths: list[str]) -> None:
             item["b64"] = base64.b64encode(p.read_bytes()).decode("ascii")
         files.append(item)
 
-    parsed = _parse_eval(br.evaluate(_js_inject_images(files)))
+    payload = json.dumps({"files": files})
+    payload_key = br.stage_text_payload(payload, prefix="meti-wechat-upload")
+    parsed = _parse_eval(br.evaluate(_js_inject_images(payload_key)))
     if not parsed.get("ok"):
         raise RuntimeError(f"贴图 batch image upload failed: {parsed}")
     if int(parsed.get("uploaded", 0)) < len(files):
@@ -570,8 +570,8 @@ def _wait_for_js_condition(js: str, *, timeout_s: float = 10.0, interval_s: floa
         time.sleep(interval_s)
 
 
-def _js_inject_images(files: list[dict[str, str]]) -> str:
-    return _JS_INJECT_IMAGES_TPL.replace("__PAYLOAD__", json.dumps({"files": files}))
+def _js_inject_images(payload_key: str) -> str:
+    return _JS_INJECT_IMAGES_TPL.replace("__PAYLOAD_KEY__", json.dumps(payload_key))
 
 
 
@@ -586,7 +586,14 @@ _JS_SAVE_SETTLED = r"""(() => {
 
 
 _JS_INJECT_IMAGES_TPL = """(async () => {
-  const payload = __PAYLOAD__;
+  const payloadKey = __PAYLOAD_KEY__;
+  const store = window.__METI_CHUNK_PAYLOADS || {};
+  const chunks = store[payloadKey];
+  if (!Array.isArray(chunks)) return JSON.stringify({ok: false, error: 'missing staged payload', expected: 0, uploaded: 0});
+  let payload;
+  try { payload = JSON.parse(chunks.join('')); }
+  catch (e) { return JSON.stringify({ok: false, error: 'invalid staged payload: ' + String(e), expected: 0, uploaded: 0}); }
+  delete store[payloadKey];
   const files = payload.files || [];
   const expected = files.length;
   if (!expected) return JSON.stringify({ok: false, error: 'no files', expected, uploaded: 0});

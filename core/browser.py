@@ -61,6 +61,7 @@ import platform
 import shutil
 import subprocess
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -505,6 +506,41 @@ def evaluate(js: str, tab: str | None = None) -> dict[str, Any]:
     if tab:
         args += ["--tab", tab]
     return _run(args, workspace=WORKSPACE)
+
+
+def stage_text_payload(
+    payload: str,
+    *,
+    prefix: str = "meti",
+    chunk_chars: int = 180_000,
+    tab: str | None = None,
+) -> str:
+    """Stage a large text payload in the browser page via small eval chunks.
+
+    OpenCLI eval arguments go through argv/npm; multi-megabyte base64 blobs can
+    hit OS argv limits or crash Node's argument handling. This helper sends the
+    payload in bounded chunks, stores it under ``window.__METI_CHUNK_PAYLOADS``,
+    and returns the page-side key for a later short eval to consume.
+    """
+    if chunk_chars <= 0:
+        raise ValueError("chunk_chars must be positive")
+    key = f"{prefix}-{uuid.uuid4().hex}"
+    key_json = json.dumps(key)
+    evaluate(
+        f"(() => {{ window.__METI_CHUNK_PAYLOADS = window.__METI_CHUNK_PAYLOADS || {{}}; "
+        f"window.__METI_CHUNK_PAYLOADS[{key_json}] = []; return JSON.stringify({{ok:true,key:{key_json}}}); }})()",
+        tab=tab,
+    )
+    for offset in range(0, len(payload), chunk_chars):
+        chunk = payload[offset : offset + chunk_chars]
+        chunk_json = json.dumps(chunk)
+        evaluate(
+            f"(() => {{ const store = window.__METI_CHUNK_PAYLOADS || (window.__METI_CHUNK_PAYLOADS = {{}}); "
+            f"(store[{key_json}] || (store[{key_json}] = [])).push({chunk_json}); "
+            f"return JSON.stringify({{ok:true,key:{key_json},chunks:store[{key_json}].length}}); }})()",
+            tab=tab,
+        )
+    return key
 
 
 def screenshot(path: str, tab: str | None = None) -> dict[str, Any]:
