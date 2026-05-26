@@ -121,11 +121,10 @@ def test_open_url_invocation():
         )
         result = open_url("https://example.com")
         argv = mock_run.call_args[0][0]
-        # Browser-flow navigation uses the visible bound workspace and must
-        # explicitly allow navigating that user-bound tab.
-        assert argv[-3:] == ["open", "https://example.com", "--allow-navigate-bound"]
-        assert "--workspace" in argv
-        assert "bound:meti" in argv
+        # OpenCLI v1.7+ uses positional session selection:
+        # `browser bound:meti open <url>`.
+        assert argv[-4:] == ["browser", "bound:meti", "open", "https://example.com"]
+        assert "--workspace" not in argv
         assert result == {"target": "tab-1"}
 
 

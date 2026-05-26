@@ -37,6 +37,7 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -55,9 +56,11 @@ EDITOR_URL = "https://creator.xiaohongshu.com/publish/publish?target=image"
 # accept attribute wins.
 FILE_INPUT_SELECTOR_CANDIDATES = [
     "input.upload-input[type=file]",
+    'input[type=file][accept*="image"]',
     'input[type=file][accept*="jpg"][multiple]',
     'input[type=file][accept*="jpg"]',
     'input[type=file][accept*="png"]',
+    'input[type=file]',
 ]
 
 # After upload, the editor expands to show title + body + actions.
@@ -79,8 +82,8 @@ BODY_SELECTOR_CANDIDATES = [
 # "存草稿" or "保存".
 SAVE_BUTTON_TEXTS = ["暂存离开", "存草稿", "保存", "Save", "Save Draft"]
 
-PAGE_LOAD_WAIT_S = 5.0
-UPLOAD_WAIT_S = 10.0  # per image; XHS server processes each
+PAGE_LOAD_WAIT_S = 2.0
+UPLOAD_WAIT_S = 10.0  # XHR timeout budget; per-image post-upload settle is shorter
 SAVE_WAIT_S = 4.0
 
 
@@ -141,7 +144,7 @@ _JS_INJECT_IMAGE_TPL = """(async () => {
       const accept = (el.accept || '').toLowerCase();
       if (!accept) continue;
       // Heuristic: if accept contains an image extension, accept it.
-      if (accept.includes('jpg') || accept.includes('jpeg') || accept.includes('png') || accept.includes('webp')) {
+      if (accept.includes('image') || accept.includes('jpg') || accept.includes('jpeg') || accept.includes('png') || accept.includes('webp')) {
         target = el;
         break;
       }
@@ -332,9 +335,11 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
             f"FILE_INPUT_SELECTOR_CANDIDATES in {__file__}."
         )
 
-    # 3. Upload all images in one browser injection. This mirrors a user
-    # selecting multiple files at once and avoids per-image fixed sleeps.
-    _upload_images_batch(images)
+    # 3. Upload images. Batch injection is faster, but OpenCLI/npm can crash
+    # when the generated eval payload gets large. Use the per-image path for
+    # reliability; it keeps each eval small enough for the browser bridge.
+    for idx, image in enumerate(images, start=1):
+        _upload_one_image(image, idx)
 
     # 4. Set title.
     if title:
@@ -362,25 +367,32 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
                 f"{body_res.get('reason', body_res)}"
             )
 
-    # 6. Click 存草稿 — XHS persists draft to server-side 草稿箱.
+    # 6. Click 存草稿 if XHS exposes the button. Current XHS Creator sometimes
+    # autosaves image notes after title/body/images are filled and shows no
+    # visible save-draft button; in that state the open editor itself is the
+    # platform draft.
     save_raw = br.evaluate(_js_click_save())
     save = _parse_eval(save_raw)
-    if not save.get("clicked"):
+    save_clicked = bool(save.get("clicked"))
+    if save_clicked:
+        _wait_for_js_condition(
+            _JS_SAVE_SETTLED,
+            timeout_s=SAVE_WAIT_S,
+            interval_s=0.25,
+        )
+    elif save.get("reason") != "no save button found":
         raise RuntimeError(
             f"XHS: failed to click save-draft button (tried texts "
             f"{SAVE_BUTTON_TEXTS}): {save.get('reason', save)}"
         )
-    _wait_for_js_condition(
-        _JS_SAVE_SETTLED,
-        timeout_s=SAVE_WAIT_S,
-        interval_s=0.25,
-    )
 
     final_url = br.get_url()
 
     return {
         "draft_url": final_url,
         "external_id": None,  # XHS doesn't surface a draft id in URL
+        "save_clicked": save_clicked,
+        "save_state": save,
     }
 
 
@@ -395,6 +407,8 @@ def _parse_eval(envelope: dict[str, Any]) -> dict[str, Any]:
     if not envelope:
         return {}
     raw = envelope.get("_raw")
+    if raw is None and isinstance(envelope.get("data"), str):
+        raw = envelope.get("data")
     if isinstance(raw, str):
         try:
             parsed = json.loads(raw)
@@ -431,8 +445,10 @@ def _upload_one_image(image_path: str, idx: int) -> None:
         raise RuntimeError(
             f"XHS image upload #{idx} ({p.name}) failed: {parsed.get('result', parsed)}"
         )
-    # Let XHS render the thumbnail before next upload.
-    time.sleep(UPLOAD_WAIT_S * 0.4)
+    # The JS injection already waits for XHS's upload XHR to finish. Keep only
+    # a tiny paint-settle delay so the swapped file input/thumbnail DOM catches
+    # up before the next file. The old 4s fixed sleep dominated 9-card runs.
+    time.sleep(0.4)
 
 
 
@@ -441,6 +457,7 @@ def _upload_images_batch(image_paths: list[str]) -> None:
     from core import browser as br
 
     files: list[dict[str, str]] = []
+    url_base = os.environ.get("METI_XHS_IMAGE_BASE_URL", "").rstrip("/")
     for idx, image_path in enumerate(image_paths):
         p = Path(image_path).expanduser()
         if not p.is_file():
@@ -454,11 +471,12 @@ def _upload_images_batch(image_paths: list[str]) -> None:
             raise ValueError(
                 f"image #{idx} ({p.name}) is {size / 1024 / 1024:.1f}MB; XHS rejects > 32MB"
             )
-        files.append({
-            "b64": base64.b64encode(p.read_bytes()).decode("ascii"),
-            "name": p.name,
-            "mime": mime,
-        })
+        item = {"name": p.name, "mime": mime}
+        if url_base:
+            item["url"] = f"{url_base}/{p.name}"
+        else:
+            item["b64"] = base64.b64encode(p.read_bytes()).decode("ascii")
+        files.append(item)
 
     parsed = _parse_eval(br.evaluate(_js_inject_images(files)))
     if not parsed.get("ok"):
@@ -563,10 +581,17 @@ _JS_INJECT_IMAGES_TPL = """(async () => {
   try {
     const dt = new DataTransfer();
     for (const item of files) {
-      const raw = atob(item.b64);
-      const bytes = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-      const blob = new Blob([bytes], {type: item.mime});
+      let blob;
+      if (item.url) {
+        const resp = await fetch(item.url, {cache: 'no-store'});
+        if (!resp.ok) throw new Error('fetch failed ' + resp.status + ' ' + item.url);
+        blob = await resp.blob();
+      } else {
+        const raw = atob(item.b64);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        blob = new Blob([bytes], {type: item.mime});
+      }
       dt.items.add(new File([blob], item.name, {type: item.mime}));
     }
     target.files = dt.files;

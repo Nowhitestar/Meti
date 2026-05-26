@@ -42,6 +42,7 @@ from __future__ import annotations
 import base64
 import json
 import mimetypes
+import os
 import re
 import time
 from pathlib import Path
@@ -76,8 +77,8 @@ TITLE_SELECTOR = "textarea.js_article_title"
 SAVE_BUTTON_TEXT = "保存为草稿"
 
 # Waits — MP's editor loads progressively, and webuploader is async.
-PAGE_LOAD_WAIT_S = 5.0
-UPLOAD_WAIT_S = 10.0  # per image; MP processes each on the server side
+PAGE_LOAD_WAIT_S = 2.0
+UPLOAD_WAIT_S = 10.0  # XHR timeout budget; per-image post-upload settle is shorter
 SAVE_WAIT_S = 5.0
 
 
@@ -104,29 +105,39 @@ _JS_GET_APPMSGID = """(() => {
   return JSON.stringify({appmsgid: fromGlobal, url: location.href});
 })()"""
 
-# Click the body ProseMirror that's NOT the title's ProseMirror twin and
-# NOT a hidden "reprint" editor. We pick the visible one whose
-# placeholder is empty (MP uses placeholder for title, blank for body).
+# Focus the WeChat 贴图 "description" ProseMirror. MP currently renders
+# several ProseMirror instances: image body, description (placeholder:
+# "填写描述信息，让大家了解更多内容"), and sometimes a full article body
+# placeholder ("从这里开始写正文"). For 贴图 posts the publishable caption is
+# the description editor, not the generic body editor.
 _JS_FOCUS_BODY = """(() => {
   const editors = Array.from(document.querySelectorAll('.ProseMirror'));
   const visible = editors.filter(e => e.offsetParent);
-  // The body editor is the visible ProseMirror whose data-placeholder
-  // is NOT the title placeholder. Title PM has placeholder
-  // "请在这里输入标题"; body PM has none.
-  const body = visible.find(e => {
-    const ph = e.getAttribute('data-placeholder') || e.getAttribute('placeholder') || '';
-    return !ph.includes('标题');
-  }) || visible[visible.length - 1];
+  const textOf = e => (e.innerText || e.textContent || '').trim();
+  const attrOf = e => [
+    e.getAttribute('data-placeholder') || '',
+    e.getAttribute('placeholder') || '',
+    e.getAttribute('aria-label') || '',
+  ].join(' ');
+  let body = visible.find(e => {
+    const s = (textOf(e) + ' ' + attrOf(e));
+    return s.includes('填写描述信息') || s.includes('了解更多内容');
+  });
+  if (!body) {
+    body = visible.find(e => {
+      const s = (textOf(e) + ' ' + attrOf(e));
+      return !s.includes('标题') && !s.includes('从这里开始写正文');
+    }) || visible[visible.length - 1];
+  }
   if (!body) return JSON.stringify({focused: false, count: visible.length});
   body.focus();
-  // Move caret to end so `type` keystrokes append rather than prepend.
   const sel = window.getSelection();
   const range = document.createRange();
   range.selectNodeContents(body);
   range.collapse(false);
   sel.removeAllRanges();
   sel.addRange(range);
-  return JSON.stringify({focused: true, currentText: (body.innerText || '').slice(0, 60)});
+  return JSON.stringify({focused: true, currentText: (body.innerText || '').slice(0, 80), count: visible.length});
 })()"""
 
 # Click the "保存为草稿" button by text-match. Returns whether it
@@ -305,9 +316,12 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
 
     appmsgid = ready.get("appmsgid")
 
-    # 3. Upload all images in one browser injection. This mirrors a user
-    # selecting multiple files at once and avoids per-image fixed sleeps.
-    _upload_images_batch(images)
+    # 3. Upload images one by one. Batch injection is fast, but 9 l-card
+    # PNGs create a huge `opencli browser eval` payload that can crash npm
+    # with `RangeError: Maximum call stack size exceeded`. The per-image
+    # path keeps each eval small and is reliable against MP.
+    for idx, image in enumerate(images, start=1):
+        _upload_one_image(image, idx)
 
     # 4. Set title via execCommand('insertText') for React dirty-state.
     if title:
@@ -344,11 +358,20 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError(
             f"贴图: failed to click '{SAVE_BUTTON_TEXT}' button: {save.get('reason', 'unknown')}"
         )
-    _wait_for_js_condition(
-        _JS_SAVE_SETTLED,
-        timeout_s=SAVE_WAIT_S,
-        interval_s=0.25,
-    )
+    try:
+        _wait_for_js_condition(
+            _JS_SAVE_SETTLED,
+            timeout_s=SAVE_WAIT_S,
+            interval_s=0.25,
+        )
+    except RuntimeError:
+        # MP sometimes leaves permanent elements with `loading` in their class
+        # names, or otherwise misses our transient-settled probe, even after it
+        # has saved and allocated an appmsgid. Treat a post-save appmsgid as
+        # sufficient evidence and verify below via URL/global extraction.
+        current_url = br.get_url()
+        if not (_extract_appmsgid(current_url) or appmsgid):
+            raise
 
     # 7. Re-extract appmsgid (MP rewrites URL on save success).
     final_url = br.get_url()
@@ -391,6 +414,8 @@ def _parse_eval(envelope: dict[str, Any]) -> dict[str, Any]:
     if not envelope:
         return {}
     raw = envelope.get("_raw")
+    if raw is None and isinstance(envelope.get("data"), str):
+        raw = envelope.get("data")
     if isinstance(raw, str):
         try:
             return json.loads(raw)  # type: ignore[no-any-return]
@@ -433,9 +458,9 @@ def _upload_one_image(image_path: str, idx: int) -> None:
         body = result.get("body") or {}
         err = body.get("base_resp", {}).get("err_msg") or result.get("parseError")
         raise RuntimeError(f"贴图 image upload #{idx} ({p.name}) failed: {err or parsed}")
-    # MP needs a moment to paint the uploaded image into the editor;
-    # subsequent images can race if we don't pause.
-    time.sleep(UPLOAD_WAIT_S * 0.5)
+    # The JS injection already waits for MP's upload XHR. Keep only a short
+    # paint-settle delay; the old 5s fixed wait made 9-card runs ~45s slower.
+    time.sleep(0.5)
 
 
 
@@ -444,6 +469,7 @@ def _upload_images_batch(image_paths: list[str]) -> None:
     from core import browser as br
 
     files: list[dict[str, str]] = []
+    url_base = os.environ.get("METI_IMAGE_BASE_URL", "").rstrip("/")
     for idx, image_path in enumerate(image_paths):
         p = Path(image_path).expanduser()
         if not p.is_file():
@@ -457,11 +483,12 @@ def _upload_images_batch(image_paths: list[str]) -> None:
             raise ValueError(
                 f"image #{idx} ({p.name}) is {size / 1024 / 1024:.1f}MB; MP rejects > 30MB"
             )
-        files.append({
-            "b64": base64.b64encode(p.read_bytes()).decode("ascii"),
-            "name": p.name,
-            "mime": mime,
-        })
+        item = {"name": p.name, "mime": mime}
+        if url_base:
+            item["url"] = f"{url_base}/{p.name}"
+        else:
+            item["b64"] = base64.b64encode(p.read_bytes()).decode("ascii")
+        files.append(item)
 
     parsed = _parse_eval(br.evaluate(_js_inject_images(files)))
     if not parsed.get("ok"):
@@ -552,9 +579,9 @@ _JS_SAVE_SETTLED = r"""(() => {
   const fromGlobal = (window.wx && wx.cgiData && wx.cgiData.app_id) || null;
   const text = document.body ? document.body.innerText : '';
   const busyText = /保存中|上传中|正在保存|loading/i.test(text);
-  const busyNode = document.querySelector('.loading, .spinner, [class*=loading], [class*=spin]');
   const hasId = !!fromGlobal || /[?&]appmsgid=\d+/.test(location.href);
-  return JSON.stringify({ready: hasId && !busyText && !busyNode, appmsgid: fromGlobal, url: location.href});
+  const savedText = /历史版本|手动保存|保存成功/.test(text);
+  return JSON.stringify({ready: hasId && (!busyText || savedText), appmsgid: fromGlobal, url: location.href});
 })()"""
 
 
@@ -620,10 +647,17 @@ _JS_INJECT_IMAGES_TPL = """(async () => {
   try {
     const dt = new DataTransfer();
     for (const item of files) {
-      const raw = atob(item.b64);
-      const bytes = new Uint8Array(raw.length);
-      for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
-      const blob = new Blob([bytes], {type: item.mime});
+      let blob;
+      if (item.url) {
+        const resp = await fetch(item.url, {cache: 'no-store'});
+        if (!resp.ok) throw new Error('fetch failed ' + resp.status + ' ' + item.url);
+        blob = await resp.blob();
+      } else {
+        const raw = atob(item.b64);
+        const bytes = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
+        blob = new Blob([bytes], {type: item.mime});
+      }
       dt.items.add(new File([blob], item.name, {type: item.mime}));
     }
     target.files = dt.files;

@@ -196,9 +196,11 @@ def _run(
     a few advanced flows). Most provider work uses the default.
     """
     full_args = list(args)
-    if workspace is not None and "--workspace" not in full_args:
-        full_args = ["--workspace", workspace] + full_args
-    argv = _opencli_argv() + ["browser"] + full_args
+    # OpenCLI v1.7+ changed browser session selection from
+    # `browser --workspace <name> <cmd>` to `browser <session> <cmd>`.
+    # Keep the Meti API stable by translating `workspace` here.
+    session = workspace or "default"
+    argv = _opencli_argv() + ["browser", session] + full_args
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
     except FileNotFoundError as e:  # pragma: no cover
@@ -254,12 +256,10 @@ def bind(*, domain: str | None = None, path_prefix: str | None = None) -> dict[s
     when this is called. Optional ``domain`` / ``path_prefix`` filters
     constrain which tab is acceptable to bind.
     """
-    args = ["bind", "--workspace", WORKSPACE]
-    if domain:
-        args += ["--domain", domain]
-    if path_prefix:
-        args += ["--path-prefix", path_prefix]
-    return _run(args, workspace=None)
+    args = ["bind"]
+    # OpenCLI v1.7 positional-session bind has no --domain/--path-prefix filters.
+    # The caller already opens the desired URL before binding, so ignore filters here.
+    return _run(args, workspace=WORKSPACE)
 
 
 def _open_chrome_tab(url: str) -> None:
@@ -310,7 +310,7 @@ def ensure_bound(
 
 def unbind() -> dict[str, Any]:
     """Detach ``bound:meti`` without closing the user's tab."""
-    return _run(["unbind", "--workspace", WORKSPACE], workspace=None, check=False)
+    return _run(["unbind"], workspace=WORKSPACE, check=False)
 
 
 def is_bound() -> bool:
@@ -452,7 +452,7 @@ def open_url(url: str, tab: str | None = None) -> dict[str, Any]:
     a specific Chrome tab. In that case ``open_url`` is wrapped with
     ``--allow-navigate-bound`` (see core.browser.WORKSPACE).
     """
-    args = ["open", url, "--allow-navigate-bound"]
+    args = ["open", url]
     if tab:
         args += ["--tab", tab]
     return _run(args, workspace=WORKSPACE)
