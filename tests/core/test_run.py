@@ -92,3 +92,52 @@ def test_finalize_with_no_targets(tmp_path, monkeypatch):
     assert "overall=empty" in log
     data = json.loads((r.dir / "result.json").read_text())
     assert data["targets"] == []
+
+
+def test_run_classifies_stub_partial_and_missing_draft_evidence_as_failed(tmp_path, monkeypatch):
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
+    r = Run.create(title="Review", meti_version="0.2.0", host="cc", mode="draft")
+    r.add_target_result(name="x-article", account="default", status="ok", mode_actual="stub")
+    r.add_target_result(name="substack", account="default", status="ok", mode_actual="partial")
+    r.add_target_result(
+        name="wechat-image",
+        account="default",
+        status="ok",
+        mode_actual="draft-platform",
+    )
+    r.finalize()
+    data = json.loads((r.dir / "result.json").read_text())
+    statuses = {t["name"]: t for t in data["targets"]}
+    assert statuses["x-article"]["status"] == "failed"
+    assert statuses["x-article"]["error_code"] == "stub"
+    assert statuses["substack"]["status"] == "failed"
+    assert statuses["substack"]["error_code"] == "partial"
+    assert statuses["wechat-image"]["mode_actual"] == "failed-needs-review"
+    assert statuses["wechat-image"]["error_code"] == "missing_draft_evidence"
+
+
+def test_result_json_preserves_structured_fields_and_redacts_token_urls(tmp_path, monkeypatch):
+    monkeypatch.setenv("METI_RUNS_DIR", str(tmp_path / "runs"))
+    r = Run.create(title="Secret", meti_version="0.2.0", host="cc", mode="draft")
+    r.add_target_result(
+        name="x-article",
+        account="default",
+        status="failed",
+        mode_actual="failed-needs-review",
+        draft_url="https://x.com/draft/1?token=secret&safe=1#frag",
+        error="needs review",
+        error_code="platform_login_required",
+        error_kind="browser_readiness",
+        recoverable=True,
+        manual_recovery="Log in and resume",
+        extras={"current_url": "https://x.com/login?auth=topsecret", "nested": ["https://e.test/?secret=s"]},
+    )
+    r.finalize()
+    target = json.loads((r.dir / "result.json").read_text())["targets"][0]
+    assert target["error_code"] == "platform_login_required"
+    assert target["error_kind"] == "browser_readiness"
+    assert target["recoverable"] is True
+    assert target["manual_recovery"] == "Log in and resume"
+    assert "secret" not in target["draft_url"]
+    assert "topsecret" not in target["extras"]["current_url"]
+    assert target["extras"]["nested"] == ["https://e.test/?secret=REDACTED"]

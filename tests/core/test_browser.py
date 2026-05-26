@@ -195,3 +195,102 @@ def test_non_json_stdout_returned_as_raw():
         )
         result = state()
         assert result["_raw"] == "some plain text output\nmultiple lines"
+
+
+def test_diagnose_opencli_unavailable_has_stable_code():
+    with patch(
+        "core.browser._opencli_argv",
+        side_effect=BrowserNotInstalledError("neither `opencli` nor `npx` is on PATH"),
+    ):
+        diag = br.diagnose()
+    assert diag.code == "opencli_unavailable"
+    assert diag.ready is False
+    assert diag.recoverable is True
+    assert any("Node.js" in action for action in diag.next_actions)
+
+
+def test_diagnose_browser_not_installed_from_doctor_output():
+    with (
+        patch("core.browser._opencli_argv", return_value=["opencli"]),
+        patch(
+            "core.browser.doctor",
+            return_value={"ok": False, "stdout": "Chrome not found", "stderr": ""},
+        ),
+    ):
+        diag = br.diagnose()
+    assert diag.code == "browser_not_installed"
+    assert diag.recoverable is True
+
+
+def test_diagnose_bridge_disconnected_from_doctor_output():
+    with (
+        patch("core.browser._opencli_argv", return_value=["opencli"]),
+        patch(
+            "core.browser.doctor",
+            return_value={"ok": False, "stdout": "extension not connected", "stderr": ""},
+        ),
+    ):
+        diag = br.diagnose()
+    assert diag.code == "bridge_disconnected"
+    assert any("OpenCLI" in action or "Chrome" in action for action in diag.next_actions)
+
+
+def test_diagnose_workspace_not_bound():
+    with (
+        patch("core.browser._opencli_argv", return_value=["opencli"]),
+        patch("core.browser.doctor", return_value={"ok": True, "stdout": "", "stderr": ""}),
+        patch("core.browser._run", return_value={}),
+        patch("core.browser.tab_list", side_effect=br.BrowserNotBoundError("workspace not found")),
+    ):
+        diag = br.diagnose()
+    assert diag.code == "workspace_not_bound"
+    assert "meti browser bind" in " ".join(diag.next_actions)
+
+
+def test_diagnose_workspace_stale_command_error():
+    with (
+        patch("core.browser._opencli_argv", return_value=["opencli"]),
+        patch("core.browser.doctor", return_value={"ok": True, "stdout": "", "stderr": ""}),
+        patch("core.browser._run", return_value={}),
+        patch("core.browser.tab_list", side_effect=br.BrowserCommandError("workspace stale")),
+    ):
+        diag = br.diagnose()
+    assert diag.code == "workspace_stale"
+    assert diag.recoverable is True
+
+
+def test_diagnose_bound_tab_missing():
+    with (
+        patch("core.browser._opencli_argv", return_value=["opencli"]),
+        patch("core.browser.doctor", return_value={"ok": True, "stdout": "", "stderr": ""}),
+        patch("core.browser._run", return_value={}),
+        patch("core.browser.tab_list", return_value=[]),
+    ):
+        diag = br.diagnose()
+    assert diag.code == "bound_tab_missing"
+
+
+def test_diagnose_ready_redacts_tab_urls():
+    with (
+        patch("core.browser._opencli_argv", return_value=["opencli"]),
+        patch("core.browser.doctor", return_value={"ok": True, "stdout": "", "stderr": ""}),
+        patch("core.browser._run", return_value={}),
+        patch(
+            "core.browser.tab_list",
+            return_value=[{"url": "https://example.com/draft?token=secret&id=1"}],
+        ),
+    ):
+        diag = br.diagnose()
+    assert diag.code == "ready"
+    assert diag.to_dict()["ready"] is True
+    assert diag.details["tabs"] == ["https://example.com/draft?…"]
+
+
+def test_diagnose_command_failed_when_probe_fails():
+    with (
+        patch("core.browser._opencli_argv", return_value=["opencli"]),
+        patch("core.browser.doctor", return_value={"ok": True, "stdout": "", "stderr": ""}),
+        patch("core.browser._run", side_effect=br.BrowserCommandError("boom")),
+    ):
+        diag = br.diagnose()
+    assert diag.code == "command_failed"

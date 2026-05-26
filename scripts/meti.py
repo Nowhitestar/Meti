@@ -30,6 +30,11 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Override manifest top-level mode (CAUTION with publish)",
     )
+    sub_publish.add_argument(
+        "--auto-recover",
+        action="store_true",
+        help="For browser-backed drafts, attempt one bounded bind/open/retry readiness recovery.",
+    )
 
     sub_setup = sub.add_parser("setup", help="Configure credentials for a provider")
     sub_setup.add_argument("provider", help="Provider name (e.g. wechat-article)")
@@ -41,6 +46,11 @@ def _build_parser() -> argparse.ArgumentParser:
     sub_resume = sub.add_parser("resume", help="Resume a previously failed run")
     sub_resume.add_argument("run_dir")
     sub_resume.add_argument("--target", default=None)
+    sub_resume.add_argument(
+        "--auto-recover",
+        action="store_true",
+        help="For browser-backed drafts, attempt one bounded bind/open/retry readiness recovery.",
+    )
 
     sub.add_parser("doctor", help="Self-check: vault, providers, health")
 
@@ -64,6 +74,7 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Provider name (required for login)",
     )
+    sub_browser.add_argument("--json", action="store_true", help="Print machine-readable status JSON")
 
     sub_wizard = sub.add_parser("wizard", help="Conversational manifest wizard")
     sub_wizard.add_argument("--type", choices=["image-post", "longform", "thread", "video-post"])
@@ -207,7 +218,16 @@ def cmd_publish(args: argparse.Namespace) -> int:
                         # get an empty creds dict.
                         creds = store.get(t.name, t.account, required_keys=required)
 
+                diag = _ensure_browser_ready_for_target(
+                    provider, t, auto_recover=getattr(args, "auto_recover", False)
+                )
+                if diag is not None:
+                    _browser_readiness_failure(run, t, diag)
+                    continue
+
                 exec_res = provider.execute(run.dir, t, t.mode, creds)
+                if exec_res is None:
+                    raise RuntimeError("provider returned no execution result")
                 run.add_target_result(
                     name=t.name,
                     account=t.account,
@@ -215,6 +235,11 @@ def cmd_publish(args: argparse.Namespace) -> int:
                     mode_actual=exec_res.mode_actual,
                     external_id=exec_res.external_id,
                     draft_url=exec_res.draft_url,
+                    error_code=exec_res.error_code,
+                    error_kind=exec_res.error_kind,
+                    recoverable=exec_res.recoverable,
+                    manual_recovery=exec_res.manual_recovery,
+                    extras=exec_res.extras,
                 )
                 run.log(
                     "EXECUTE_OK",
@@ -239,6 +264,38 @@ def cmd_publish(args: argparse.Namespace) -> int:
     except MetiError as e:
         print(f"ERROR  {e}", file=sys.stderr)
         return 2
+
+
+def _browser_readiness_failure(run, target, diag) -> None:
+    run.add_target_result(
+        name=target.name,
+        account=target.account,
+        status="failed",
+        mode_actual="failed-needs-review",
+        error=diag.message,
+        error_code=diag.code,
+        error_kind="browser_readiness",
+        recoverable=diag.recoverable,
+        manual_recovery="; ".join(diag.next_actions),
+        extras={"browser_diagnostic": diag.to_dict()},
+    )
+    run.log("BROWSER_NOT_READY", target=target.name, code=diag.code)
+
+
+def _ensure_browser_ready_for_target(provider, target, *, auto_recover: bool):
+    if target.mode == "dry-run" or not getattr(provider, "browser_login_url", None):
+        return None
+    from core import browser as br
+
+    url = getattr(provider, "browser_login_url", None) or "about:blank"
+    diag = br.diagnose(platform_url=url)
+    if diag.ready:
+        return None
+    if auto_recover:
+        diag = br.recover_once(url)
+        if diag.ready:
+            return None
+    return diag
 
 
 # Per-provider hints for the "next step" line in the publish checklist.
@@ -442,7 +499,16 @@ def cmd_resume(args: argparse.Namespace) -> int:
                     if required:
                         creds = store.get(t.name, t.account, required_keys=required)
 
+                diag = _ensure_browser_ready_for_target(
+                    provider, t, auto_recover=getattr(args, "auto_recover", False)
+                )
+                if diag is not None:
+                    _browser_readiness_failure(run, t, diag)
+                    continue
+
                 exec_res = provider.execute(run.dir, t, t.mode, creds)
+                if exec_res is None:
+                    raise RuntimeError("provider returned no execution result")
                 run.add_target_result(
                     name=t.name,
                     account=t.account,
@@ -450,6 +516,11 @@ def cmd_resume(args: argparse.Namespace) -> int:
                     mode_actual=exec_res.mode_actual,
                     external_id=exec_res.external_id,
                     draft_url=exec_res.draft_url,
+                    error_code=exec_res.error_code,
+                    error_kind=exec_res.error_kind,
+                    recoverable=exec_res.recoverable,
+                    manual_recovery=exec_res.manual_recovery,
+                    extras=exec_res.extras,
                 )
                 run.log(
                     "EXECUTE_OK",
@@ -541,33 +612,23 @@ def cmd_browser(args: argparse.Namespace) -> int:
         return 0 if result["ok"] else 2
 
     if action == "status":
-        try:
-            connected = br.is_connected()
-        except br.BrowserNotInstalledError as e:
-            print(f"ERROR  {e}", file=sys.stderr)
-            return 2
-        if not connected:
-            print(
-                "✖  Browser Bridge extension not connected.\n"
-                "Install: https://chromewebstore.google.com/detail/opencli/"
-                "ildkmabpimmkaediidaifkhjpohdnifk\n"
-                "Then make sure Chrome is open and the extension is enabled.",
-                file=sys.stderr,
-            )
-            return 2
-        bound = br.is_bound()
-        print(f"OK  Browser Bridge connected. Workspace `{br.WORKSPACE}` bound: {bound}")
-        if bound:
-            try:
-                tabs = br.tab_list()
-                print(f"    {len(tabs)} tab(s) in the bound window")
-                for t in tabs[:5]:
-                    print(f"      - {t.get('url', '?')[:90]}")
-            except br.MetiError as e:
-                print(f"    (could not list tabs: {e})")
+        diag = br.diagnose()
+        if getattr(args, "json", False):
+            print(json.dumps(diag.to_dict(), ensure_ascii=False, indent=2))
         else:
-            print("    Run `meti browser bind` from a Chrome tab to anchor meti there.")
-        return 0
+            prefix = "OK" if diag.ready else "NEEDS_ACTION"
+            print(f"{prefix}  {diag.code}  {diag.message}")
+            if diag.next_actions:
+                print("Next actions:")
+                for action_item in diag.next_actions:
+                    print(f"  - {action_item}")
+            if diag.ready:
+                tabs = diag.details.get("tabs") or []
+                if tabs:
+                    print(f"Bound tabs ({diag.details.get('tab_count', len(tabs))}):")
+                    for url in tabs[:5]:
+                        print(f"  - {url}")
+        return 0 if diag.ready else 2
 
     if action == "bind":
         try:

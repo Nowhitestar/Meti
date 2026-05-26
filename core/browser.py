@@ -58,6 +58,8 @@ from __future__ import annotations
 import json
 import os
 import platform
+from dataclasses import asdict, dataclass, field
+from enum import Enum
 import shutil
 import subprocess
 import time
@@ -91,6 +93,218 @@ class BrowserNotBoundError(MetiError):
 
 class BrowserCommandError(MetiError):
     """An opencli browser subcommand failed unexpectedly."""
+
+
+class BrowserStatusCode(str, Enum):
+    READY = "ready"
+    BROWSER_NOT_INSTALLED = "browser_not_installed"
+    OPENCLI_UNAVAILABLE = "opencli_unavailable"
+    BRIDGE_DISCONNECTED = "bridge_disconnected"
+    WORKSPACE_NOT_BOUND = "workspace_not_bound"
+    WORKSPACE_STALE = "workspace_stale"
+    BOUND_TAB_MISSING = "bound_tab_missing"
+    PLATFORM_LOGIN_REQUIRED = "platform_login_required"
+    COMMAND_FAILED = "command_failed"
+    UNKNOWN = "unknown"
+
+
+@dataclass
+class BrowserDiagnostic:
+    code: str
+    message: str
+    recoverable: bool
+    next_actions: list[str] = field(default_factory=list)
+    details: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def ready(self) -> bool:
+        return self.code == BrowserStatusCode.READY.value
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"ready": self.ready, **asdict(self)}
+
+
+def _diag(
+    code: BrowserStatusCode | str,
+    message: str,
+    *,
+    recoverable: bool,
+    next_actions: list[str] | None = None,
+    details: dict[str, Any] | None = None,
+) -> BrowserDiagnostic:
+    value = code.value if isinstance(code, BrowserStatusCode) else code
+    return BrowserDiagnostic(
+        code=value,
+        message=message,
+        recoverable=recoverable,
+        next_actions=next_actions or [],
+        details=details or {},
+    )
+
+
+def _redact_url(url: str) -> str:
+    if not url:
+        return url
+    for marker in ("?", "#"):
+        if marker in url:
+            return url.split(marker, 1)[0] + marker + "…"
+    return url
+
+
+def diagnose(*, platform_url: str | None = None) -> BrowserDiagnostic:
+    """Return a stable, machine-readable OpenCLI/Chrome readiness diagnostic."""
+    try:
+        _opencli_argv()
+    except BrowserNotInstalledError as exc:
+        text = str(exc).lower()
+        if "neither `opencli` nor `npx`" in text or "node.js" in text:
+            return _diag(
+                BrowserStatusCode.OPENCLI_UNAVAILABLE,
+                "OpenCLI is unavailable or Node.js is too old.",
+                recoverable=True,
+                next_actions=["Install Node.js >= 21", "Run `meti browser status` again"],
+                details={"error": str(exc)},
+            )
+        return _diag(
+            BrowserStatusCode.BROWSER_NOT_INSTALLED,
+            "A supported Chrome/OpenCLI browser setup was not found.",
+            recoverable=True,
+            next_actions=["Install Google Chrome", "Install Node.js >= 21"],
+            details={"error": str(exc)},
+        )
+    except Exception as exc:
+        return _diag(
+            BrowserStatusCode.UNKNOWN,
+            "Could not inspect the browser bridge prerequisites.",
+            recoverable=True,
+            next_actions=["Run `meti browser doctor`"],
+            details={"error": str(exc)},
+        )
+
+    try:
+        doc = doctor()
+    except BrowserNotInstalledError as exc:
+        return _diag(
+            BrowserStatusCode.OPENCLI_UNAVAILABLE,
+            "OpenCLI is unavailable.",
+            recoverable=True,
+            next_actions=["Install Node.js >= 21", "Run `meti browser status` again"],
+            details={"error": str(exc)},
+        )
+    except Exception as exc:
+        return _diag(
+            BrowserStatusCode.COMMAND_FAILED,
+            "OpenCLI doctor command failed.",
+            recoverable=True,
+            next_actions=["Run `meti browser doctor`"],
+            details={"error": str(exc)},
+        )
+    if not doc.get("ok"):
+        combined = f"{doc.get('stdout', '')}\n{doc.get('stderr', '')}".lower()
+        if "chrome" in combined and ("not found" in combined or "not installed" in combined):
+            return _diag(
+                BrowserStatusCode.BROWSER_NOT_INSTALLED,
+                "Google Chrome is not installed or not discoverable.",
+                recoverable=True,
+                next_actions=["Install/open Google Chrome", "Run `meti browser status` again"],
+            )
+        return _diag(
+            BrowserStatusCode.BRIDGE_DISCONNECTED,
+            "OpenCLI Browser Bridge is not connected to Chrome.",
+            recoverable=True,
+            next_actions=[
+                "Install/enable the OpenCLI Chrome extension",
+                "Open Chrome",
+                "Run `meti browser status` again",
+            ],
+        )
+
+    try:
+        _run(["tab", "list"], workspace=None, check=True, timeout=30)
+    except BrowserNotConnectedError:
+        return _diag(
+            BrowserStatusCode.BRIDGE_DISCONNECTED,
+            "OpenCLI Browser Bridge is not connected to Chrome.",
+            recoverable=True,
+            next_actions=["Open Chrome", "Enable the OpenCLI extension"],
+        )
+    except BrowserCommandError as exc:
+        return _diag(
+            BrowserStatusCode.COMMAND_FAILED,
+            "OpenCLI responded but a browser command failed.",
+            recoverable=True,
+            next_actions=["Run `meti browser doctor`", "Retry with `--auto-recover` if publishing"],
+            details={"error": str(exc)},
+        )
+
+    try:
+        tabs = tab_list()
+    except BrowserNotBoundError:
+        return _diag(
+            BrowserStatusCode.WORKSPACE_NOT_BOUND,
+            f"Workspace `{WORKSPACE}` is not bound to a Chrome tab.",
+            recoverable=True,
+            next_actions=["Run `meti browser bind` from the Chrome tab you want Meti to use"],
+        )
+    except BrowserCommandError as exc:
+        msg = str(exc).lower()
+        code = BrowserStatusCode.WORKSPACE_STALE if "stale" in msg else BrowserStatusCode.COMMAND_FAILED
+        return _diag(
+            code,
+            "Bound browser workspace is stale or unreachable."
+            if code == BrowserStatusCode.WORKSPACE_STALE
+            else "Could not inspect the bound browser workspace.",
+            recoverable=True,
+            next_actions=["Run `meti browser bind` again", "Retry with `--auto-recover` if publishing"],
+            details={"error": str(exc)},
+        )
+    if not tabs:
+        return _diag(
+            BrowserStatusCode.BOUND_TAB_MISSING,
+            f"Workspace `{WORKSPACE}` exists but has no reachable tabs.",
+            recoverable=True,
+            next_actions=["Open a Chrome tab and run `meti browser bind` again"],
+        )
+    safe_tabs = [_redact_url(str(t.get("url", ""))) for t in tabs[:5]]
+    if platform_url:
+        try:
+            current = get_url()
+        except Exception:
+            current = ""
+        if current and "login" in current.lower():
+            return _diag(
+                BrowserStatusCode.PLATFORM_LOGIN_REQUIRED,
+                "The bound browser tab appears to be on a platform login page.",
+                recoverable=True,
+                next_actions=["Log in in Chrome", "Then run `meti resume <run-dir>`"],
+                details={"current_url": _redact_url(current)},
+            )
+    return _diag(
+        BrowserStatusCode.READY,
+        f"Browser Bridge connected and workspace `{WORKSPACE}` is bound.",
+        recoverable=False,
+        next_actions=[],
+        details={"tab_count": len(tabs), "tabs": safe_tabs},
+    )
+
+
+def recover_once(url: str = "about:blank") -> BrowserDiagnostic:
+    """Perform one bounded visible bind/open recovery attempt, then re-diagnose."""
+    before = diagnose(platform_url=url)
+    if before.ready:
+        return before
+    if before.code in {
+        BrowserStatusCode.WORKSPACE_NOT_BOUND.value,
+        BrowserStatusCode.WORKSPACE_STALE.value,
+        BrowserStatusCode.BOUND_TAB_MISSING.value,
+    }:
+        try:
+            auto_bind(url=url, force=True)
+        except Exception:
+            pass
+    elif before.code == BrowserStatusCode.READY.value:
+        pass
+    return diagnose(platform_url=url)
 
 
 def _node_major_for_npx(npx_path: str) -> int | None:

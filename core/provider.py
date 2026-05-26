@@ -59,7 +59,27 @@ class ExecutionResult:
     mode_actual: str  # "dry-run" | "stub" | "draft-local" | "draft-platform" | "published"
     external_id: str | None = None
     draft_url: str | None = None
+    error_code: str | None = None
+    error_kind: str | None = None
+    recoverable: bool = False
+    manual_recovery: str | None = None
     extras: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if self.status == "ok" and self.mode_actual in {"stub", "partial", "failed-needs-review"}:
+            self.status = "failed"
+            self.error_code = self.error_code or self.mode_actual.replace("-", "_")
+            self.error_kind = self.error_kind or "review_needed"
+            self.recoverable = True
+        if self.status == "ok" and self.mode_actual == "draft-platform":
+            # A platform draft success must have durable evidence. Filled UI fields alone
+            # are not enough to aggregate as successful.
+            if not (self.external_id or self.draft_url):
+                self.status = "failed"
+                self.mode_actual = "failed-needs-review"
+                self.error_code = self.error_code or "missing_draft_evidence"
+                self.error_kind = self.error_kind or "review_needed"
+                self.recoverable = True
 
 
 @dataclass

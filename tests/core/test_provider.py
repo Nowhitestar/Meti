@@ -5,6 +5,7 @@ import yaml
 
 from core.errors import ProviderNotFoundError
 from core.provider import (
+    ExecutionResult,
     ProviderRegistry,
 )
 
@@ -135,3 +136,37 @@ def test_filter_by_media_type(tmp_path):
 
     images = reg.list(media_type="image-post")
     assert all(i.name != "lf-only" for i in images)
+
+
+def test_execution_result_stub_is_not_successful_platform_draft():
+    result = ExecutionResult(status="ok", mode_actual="stub")
+    assert result.status == "failed"
+    assert result.error_code == "stub"
+    assert result.error_kind == "review_needed"
+    assert result.recoverable is True
+
+
+def test_execution_result_partial_and_failed_needs_review_are_recoverable_failures():
+    partial = ExecutionResult(status="ok", mode_actual="partial")
+    review = ExecutionResult(status="ok", mode_actual="failed-needs-review")
+    assert partial.status == "failed"
+    assert partial.error_code == "partial"
+    assert review.status == "failed"
+    assert review.error_code == "failed_needs_review"
+
+
+def test_execution_result_draft_platform_requires_evidence():
+    result = ExecutionResult(status="ok", mode_actual="draft-platform")
+    assert result.status == "failed"
+    assert result.mode_actual == "failed-needs-review"
+    assert result.error_code == "missing_draft_evidence"
+
+
+def test_execution_result_draft_platform_with_evidence_stays_ok():
+    result = ExecutionResult(
+        status="ok",
+        mode_actual="draft-platform",
+        draft_url="https://example.com/drafts/1",
+    )
+    assert result.status == "ok"
+    assert result.error_code is None

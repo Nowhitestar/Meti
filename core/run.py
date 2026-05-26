@@ -22,6 +22,24 @@ def _now_id() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S")
 
 
+def _redact_url(url: str | None) -> str | None:
+    if not url:
+        return url
+    return re.sub(r"([?&](?:token|access_token|auth|code|state|session|key|secret)=)[^&#]+", r"\1REDACTED", url, flags=re.I)
+
+
+def _redact_value(value: Any) -> Any:
+    if isinstance(value, str):
+        return _redact_url(value)
+    if isinstance(value, list):
+        return [_redact_value(v) for v in value]
+    if isinstance(value, tuple):
+        return [_redact_value(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _redact_value(v) for k, v in value.items()}
+    return value
+
+
 def slugify(text: str, max_len: int = 40) -> str:
     """ASCII-friendly lowercase slug.
 
@@ -52,6 +70,11 @@ class _TargetResult:
     started_at: str = field(default_factory=_now_iso)
     completed_at: str | None = None
     error: str | None = None
+    error_code: str | None = None
+    error_kind: str | None = None
+    recoverable: bool = False
+    manual_recovery: str | None = None
+    extras: dict[str, Any] = field(default_factory=dict)
     violations: list[dict[str, Any]] = field(default_factory=list)
 
 
@@ -105,8 +128,26 @@ class Run:
         external_id: str | None = None,
         draft_url: str | None = None,
         error: str | None = None,
+        error_code: str | None = None,
+        error_kind: str | None = None,
+        recoverable: bool = False,
+        manual_recovery: str | None = None,
+        extras: dict[str, Any] | None = None,
         violations: list[dict[str, Any]] | None = None,
     ) -> None:
+        if status == "ok" and mode_actual in {"stub", "partial", "failed-needs-review"}:
+            status = "failed"
+            error_code = error_code or mode_actual.replace("-", "_")
+            error_kind = error_kind or "review_needed"
+            recoverable = True
+            error = error or "target requires manual review; not a confirmed platform draft"
+        if status == "ok" and mode_actual == "draft-platform" and not (external_id or draft_url):
+            status = "failed"
+            mode_actual = "failed-needs-review"
+            error_code = error_code or "missing_draft_evidence"
+            error_kind = error_kind or "review_needed"
+            recoverable = True
+            error = error or "platform draft did not include durable draft evidence"
         self.targets.append(
             _TargetResult(
                 name=name,
@@ -114,9 +155,14 @@ class Run:
                 status=status,
                 mode_actual=mode_actual,
                 external_id=external_id,
-                draft_url=draft_url,
+                draft_url=_redact_url(draft_url),
                 completed_at=_now_iso(),
                 error=error,
+                error_code=error_code,
+                error_kind=error_kind,
+                recoverable=recoverable,
+                manual_recovery=manual_recovery,
+                extras=_redact_value(extras or {}),
                 violations=violations or [],
             )
         )
