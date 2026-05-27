@@ -10,10 +10,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from core import host
 from core import settings as settings_mod
 from core.credentials import CredentialStore
 from core.errors import MissingCredentialError
 from core.provider import ProviderRegistry
+from core.provider_metadata import ProviderManifest, discover_provider_manifests
 
 
 def _account_status(
@@ -36,11 +38,12 @@ def build_context(
     user_dir: Path | None = None,
     media_type: str | None = None,
 ) -> dict[str, Any]:
-    reg = ProviderRegistry(bundled_dir=bundled_dir, user_dir=user_dir)
     s = settings_mod.load()
-    # TODO(plan-4): pass trust_user from settings.trusted_user_providers
-    # to enable third-party providers from ~/.config/meti/providers/.
-    reg.discover(trust_user=False)
+    trusted_user_providers = set(s.trusted_user_providers)
+    effective_user_dir = user_dir or host.user_providers_dir()
+
+    reg = ProviderRegistry(bundled_dir=bundled_dir, user_dir=effective_user_dir)
+    reg.discover(trusted_user_providers=trusted_user_providers)
 
     store = CredentialStore()
     flat_accounts = store.list_accounts()  # ["provider:account", ...]
@@ -88,8 +91,47 @@ def build_context(
                 "credential_status": cred_status,
                 "accounts": accounts_detail,
                 "source": info.source,
+                "trusted": True,
+                "trust_status": "trusted" if info.source == "user" else "bundled",
+                "overrides_bundled": info.overrides_bundled,
             }
         )
+
+    loaded_user_names = {
+        provider["name"]
+        for provider in providers_out
+        if provider["source"] == "user" and provider["trusted"]
+    }
+
+    def _untrusted_provider_entry(manifest: ProviderManifest) -> dict[str, Any]:
+        return {
+            "name": manifest.name,
+            "display_name": manifest.display_name,
+            "media_types": manifest.media_types,
+            "capabilities": manifest.capabilities,
+            "required_credentials": [
+                {
+                    "key": str(c.get("key", "")),
+                    "description": str(c.get("description", "")),
+                    "secret": bool(c.get("secret", True)),
+                }
+                for c in manifest.required_credentials
+            ],
+            "credential_status": "unknown",
+            "accounts": [],
+            "source": "user",
+            "trusted": False,
+            "trust_status": "untrusted",
+            "overrides_bundled": False,
+            "trust_command": f"meti providers trust {manifest.name}",
+        }
+
+    for manifest in discover_provider_manifests(effective_user_dir, source="user"):
+        if manifest.name in trusted_user_providers or manifest.name in loaded_user_names:
+            continue
+        if media_type and media_type not in manifest.media_types:
+            continue
+        providers_out.append(_untrusted_provider_entry(manifest))
 
     return {
         "providers": providers_out,
@@ -98,5 +140,6 @@ def build_context(
             "default_mode": s.default_mode,
             "wizard_enabled": s.wizard_enabled,
             "auto_save_manifest": s.auto_save_manifest,
+            "trusted_user_providers": sorted(s.trusted_user_providers),
         },
     }

@@ -21,18 +21,21 @@ Produce a list of `Target` entries:
    python3 scripts/meti.py wizard --dump-context --type <draft.type>
    ```
 
-   The output is JSON with `providers`, `accounts`, `settings`.
+   The output is JSON with `providers`, `accounts`, `settings`. Provider entries
+   include `source`, `trusted`, `trust_status`, and `overrides_bundled`.
 
 2. **Filter to compatible providers**: media_types must include the draft's `type`.
 
-3. **Show the list** to the user with status markers:
+3. **Show the list** to the user with status markers. Do not present
+   `trust_status: untrusted` providers as selectable targets; show the trust
+   command instead.
 
    ```
    Available targets for <type>:
-     ✓ wechat-article    (creds: ok)        — 微信公众号文章
-     ✗ xiaohongshu       (creds: missing)   — 小红书图文 [run `meti setup xiaohongshu` first]
-     ✓ x-article         (creds: ok)        — X Articles
-     ✓ substack          (creds: ok)        — Substack
+     ✓ wechat-article    (bundled, creds: ok)       — 微信公众号文章
+     ✗ xiaohongshu       (bundled, creds: missing)  — 小红书图文 [run `meti setup xiaohongshu` first]
+     ✓ x-article         (bundled, creds: ok)       — X Articles
+     ! local-demo        (user, untrusted)           — run `meti providers trust local-demo`
    ```
 
 4. **Ask which targets to use** as a multi-pick (e.g. "1, 3" or names).
@@ -46,9 +49,11 @@ Produce a list of `Target` entries:
      - For `xiaohongshu`: ask about hashtags / hook. Title max 20 chars.
      - For `substack`: ask about subtitle / paid-tier flag.
 
-6. Do NOT proceed if a chosen target has `credential_status: missing`. Tell the
-   user which `meti setup <provider>` to run, and either wait for them to do it
-   (then re-run `--dump-context`) or drop that target.
+6. Do NOT proceed if a chosen target has `trust_status: untrusted` or
+   `credential_status: missing`. For untrusted providers, tell the user which
+   `meti providers trust <provider>` command enables it. For missing
+   credentials, tell the user which `meti setup <provider>` command to run.
+   Either wait for them to do it (then re-run `--dump-context`) or drop that target.
 
 ## When to advance
 

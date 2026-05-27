@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Meti unified CLI entry.
 
-Subcommands: validate, publish, setup, list, resume, doctor, wizard.
+Subcommands: validate, publish, setup, list, providers, resume, doctor, wizard.
 """
 
 from __future__ import annotations
@@ -43,6 +43,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
     sub_list = sub.add_parser("list", help="List providers / accounts / runs")
     sub_list.add_argument("kind", choices=["providers", "accounts", "runs"])
+
+    sub_providers = sub.add_parser("providers", help="Manage trusted user providers")
+    providers_sub = sub_providers.add_subparsers(dest="providers_action", required=True)
+    providers_sub.add_parser("list", help="List bundled and user providers with trust state")
+    providers_trust = providers_sub.add_parser("trust", help="Trust a user provider by name")
+    providers_trust.add_argument("name", help="provider.yaml name to trust")
+    providers_untrust = providers_sub.add_parser("untrust", help="Remove trust for a user provider")
+    providers_untrust.add_argument("name", help="provider.yaml name to untrust")
 
     sub_resume = sub.add_parser("resume", help="Resume a previously failed run")
     sub_resume.add_argument("run_dir")
@@ -412,13 +420,7 @@ def cmd_setup(args: argparse.Namespace) -> int:
 
 def cmd_list(args: argparse.Namespace) -> int:
     if args.kind == "providers":
-        from core.provider import ProviderRegistry
-
-        reg = ProviderRegistry()
-        reg.discover()
-        for info in reg.list():
-            caps = ",".join(k for k, v in info.capabilities.items() if v)
-            print(f"  {info.name}  ({info.source})  media={info.media_types}  caps={caps}")
+        return cmd_providers(argparse.Namespace(providers_action="list"))
     elif args.kind == "accounts":
         from core.credentials import CredentialStore
 
@@ -434,6 +436,66 @@ def cmd_list(args: argparse.Namespace) -> int:
                 if d.is_dir():
                     print(f"  {d.name}")
     return 0
+
+
+def _enabled_capabilities(caps: dict[str, bool]) -> str:
+    return ",".join(k for k, v in caps.items() if v)
+
+
+def cmd_providers(args: argparse.Namespace) -> int:
+    from core import host as h
+    from core import settings
+    from core.provider import ProviderRegistry
+    from core.provider_metadata import discover_provider_manifests
+
+    user_dir = h.user_providers_dir()
+    s = settings.load()
+    trusted = set(s.trusted_user_providers)
+
+    if args.providers_action == "trust":
+        manifests = discover_provider_manifests(user_dir, source="user")
+        if not any(manifest.name == args.name for manifest in manifests):
+            print(f"ERROR  user provider not found: {args.name} in {user_dir}", file=sys.stderr)
+            return 2
+        s.trusted_user_providers = sorted({*s.trusted_user_providers, args.name})
+        path = settings.save(s)
+        print(f"OK  trusted {args.name} in {path}")
+        return 0
+
+    if args.providers_action == "untrust":
+        s.trusted_user_providers = sorted(
+            name for name in s.trusted_user_providers if name != args.name
+        )
+        path = settings.save(s)
+        print(f"OK  untrusted {args.name} in {path}")
+        return 0
+
+    if args.providers_action == "list":
+        reg = ProviderRegistry(user_dir=user_dir)
+        reg.discover(trusted_user_providers=trusted)
+        for info in reg.list():
+            caps = _enabled_capabilities(info.capabilities)
+            if info.source == "user":
+                status = "user trusted"
+                suffix = "  overrides bundled" if info.overrides_bundled else ""
+            else:
+                status = "bundled"
+                suffix = ""
+            print(f"  {info.name}  ({status})  media={info.media_types}  caps={caps}{suffix}")
+
+        loaded = {(info.name, info.source) for info in reg.list()}
+        for manifest in discover_provider_manifests(user_dir, source="user"):
+            if manifest.name in trusted or (manifest.name, "user") in loaded:
+                continue
+            caps = _enabled_capabilities(manifest.capabilities)
+            print(
+                f"  {manifest.name}  (user untrusted)  media={manifest.media_types}  "
+                f"caps={caps}  run: meti providers trust {manifest.name}"
+            )
+        return 0
+
+    print(f"ERROR  unknown providers action: {args.providers_action}", file=sys.stderr)
+    return 2
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
@@ -725,6 +787,7 @@ _DISPATCH = {
     "publish": cmd_publish,
     "setup": cmd_setup,
     "list": cmd_list,
+    "providers": cmd_providers,
     "resume": cmd_resume,
     "doctor": cmd_doctor,
     "wizard": cmd_wizard,
