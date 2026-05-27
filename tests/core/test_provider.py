@@ -170,3 +170,18 @@ def test_execution_result_draft_platform_with_evidence_stays_ok():
     )
     assert result.status == "ok"
     assert result.error_code is None
+
+
+def test_bundled_provider_metadata_matches_provider_classes():
+    reg = ProviderRegistry()
+    reg.discover()
+
+    assert reg.list()
+    for info in reg.list():
+        provider = reg.resolve(info.name)
+        assert info.display_name == provider.display_name
+        assert info.media_types == provider.media_types
+        assert info.capabilities == provider.capabilities
+        assert [c.key for c in info.required_credentials] == [
+            c.key for c in provider.required_credentials
+        ]
