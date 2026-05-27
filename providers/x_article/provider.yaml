@@ -6,10 +6,6 @@ capabilities:
   draft: true
   publish: false
   schedule: false
-required_credentials:
-  - key: X_AUTH_TOKEN
-    description: "X (Twitter) auth token cookie value"
-    secret: true
-    setup_hint: "Capture from a logged-in browser session; rotate after testing"
+required_credentials: []
 entry: provider:XArticleProvider
 schema_version: 1

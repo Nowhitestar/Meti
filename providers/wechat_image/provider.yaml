@@ -1,5 +1,5 @@
 name: wechat-image
-display_name: 微信图文内容
+display_name: 微信贴图
 media_types:
   - image-post
 capabilities:

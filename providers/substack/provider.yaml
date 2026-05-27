@@ -6,10 +6,6 @@ capabilities:
   draft: true
   publish: false
   schedule: false
-required_credentials:
-  - key: SUBSTACK_SESSION_COOKIE
-    description: "Substack session cookie value"
-    secret: true
-    setup_hint: "Capture `substack.sid` from a logged-in browser session"
+required_credentials: []
 entry: provider:SubstackProvider
 schema_version: 1
