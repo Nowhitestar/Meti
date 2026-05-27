@@ -10,7 +10,7 @@
     {
       "name": "meti",
       "source": ".",
-      "description": "One manifest → drafts on WeChat OA · Xiaohongshu · X Articles · Substack · WeChat 贴图. Draft-first publishing for the Chinese-platform internet.",
+      "description": "One manifest → drafts on WeChat OA · Xiaohongshu · X Articles · X Threads · Substack · WeChat 贴图. Draft-first publishing for the Chinese-platform internet.",
       "version": "0.4.3",
       "author": {
         "name": "Lewis Liao",
@@ -26,6 +26,7 @@
         "xiaohongshu",
         "substack",
         "x-articles",
+        "x-threads",
         "draft-first"
       ],
       "keywords": [
@@ -34,6 +35,7 @@
         "xiaohongshu",
         "substack",
         "x-articles",
+        "x-threads",
         "draft-first"
       ]
     }

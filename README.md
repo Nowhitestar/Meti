@@ -30,11 +30,12 @@ Works as a [Claude Code](https://claude.com/claude-code) plugin **and** as an [O
 |---|---|---|
 | `wechat-article` | 公众号 图文 (article) | WeChat Open Platform API — `material/add_material` + `draft/add` |
 | `wechat-image` | 公众号 贴图 (image post) | OpenCLI Bridge → real Chrome → `DataTransfer` injection |
-| `xiaohongshu` | 小红书 草稿 (note) | Local `draft.sh` → JSON file → finalize in XHS app |
+| `xiaohongshu` | 小红书 草稿 (note) | OpenCLI Bridge → real Chrome → Creator Studio |
 | `x-article` | X Articles (Premium) | OpenCLI Bridge → real Chrome |
+| `x-thread` | X thread composer | OpenCLI Bridge → real Chrome, stops before `Post all` |
 | `substack` | Substack post draft | OpenCLI Bridge → real Chrome |
 
-All five are real-account verified. See [docs/browser-connectors.md](docs/browser-connectors.md) for the OpenCLI-backed three.
+All browser-flow providers reuse your logged-in Chrome session; Meti does not ask you to capture raw cookies for them. See [docs/browser-connectors.md](docs/browser-connectors.md).
 
 ## Install
 
@@ -64,7 +65,7 @@ pip install -e ".[dev]"
 meti --help
 ```
 
-**Optional: OpenCLI Bridge** for `x-article` / `substack` / `wechat-image`. One-time setup:
+**Optional: OpenCLI Bridge** for `wechat-image`, `xiaohongshu`, `x-article`, `x-thread`, and `substack`. One-time setup:
 
 ```bash
 brew install node            # or apt install nodejs npm — needs Node ≥ 21
@@ -133,9 +134,9 @@ tags: [ai, essay]
 | Path | When | Trade-off |
 |---|---|---|
 | **API** (`wechat-article`) | Platform exposes a draft API + you have AppID/Secret | Fast, scriptable, no Chrome dependency |
-| **Browser-flow** (`wechat-image`, `x-article`, `substack`) | No API exists, OR API can't create the post type | Reuses real Chrome session, works inside the browser the platform expects, breaks when platform UI drifts (selectors are constants at the top of each `internal/browser_flow.py`) |
+| **Browser-flow** (`wechat-image`, `xiaohongshu`, `x-article`, `x-thread`, `substack`) | No API exists, OR API can't create the post type | Reuses real Chrome session, works inside the browser the platform expects, breaks when platform UI drifts (selectors are constants at the top of each `internal/browser_flow.py`) |
 
-**Safety is a property of the design, not a runtime check.** `mode: draft` is the default for every provider. `mode: publish` requires both manifest opt-in *and* an in-conversation `--confirm-publish` flag. Vault writes are atomic (tmp + fsync + os.replace) under flock — no concurrent-write data loss. Run dirs are append-only — `result.json` is written once, at the end.
+**Safety is a property of the design, not a runtime check.** `mode: draft` is the default for every provider. Bundled providers currently advertise `publish: false`; reopening public publish support would require explicit future provider work plus an active confirmation gate. Vault writes are atomic (tmp + fsync + os.replace) under flock — no concurrent-write data loss. Run dirs are append-only — `result.json` is written once, at the end.
 
 Full architecture: [docs/architecture.md](docs/architecture.md). Safety policy: [docs/safety-policy.md](docs/safety-policy.md). Browser connector internals: [docs/browser-connectors.md](docs/browser-connectors.md).
 
@@ -146,8 +147,9 @@ core/                  # host-agnostic Python (manifest, providers, vault, runs)
 providers/             # bundled first-party providers
   wechat_article/      # API
   wechat_image/        # OpenCLI Bridge (贴图)
-  xiaohongshu/         # local draft.sh
+  xiaohongshu/         # OpenCLI Bridge
   x_article/           # OpenCLI Bridge
+  x_thread/            # OpenCLI Bridge
   substack/            # OpenCLI Bridge
 scripts/meti.py        # CLI entry
 .claude-plugin/        # Claude Code plugin manifest
@@ -163,6 +165,7 @@ tests/                 # 142 unit + integration tests
 - ✅ **v0.3.1** — `x-article` + `substack` connectors via OpenCLI Bridge
 - ✅ **v0.3.2** — `wechat-image` (贴图) connector — solves the local-file-upload + request-signing field problem
 - ✅ **v0.4** — Rebrand to Meti
+- ✅ **v0.4.x** — `xiaohongshu` and `x-thread` browser-flow draft paths
 - ⏳ **v0.4.x** — `wechat-channel` (视频号) connector
 - ⏳ **v0.5** — Multi-account routing (`target.account: <name>`) + per-provider session-expiry detection
 - ⏳ **v1.0** — Public marketplace listings (Claude Code plugin store, OpenClaw)
