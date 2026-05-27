@@ -198,6 +198,9 @@ def test_target_action_derivation_precedence():
     assert not should_resume_target(
         {"status": "failed", "error_kind": "review_needed", "recoverable": True}
     )
+    assert not should_resume_target(
+        {"status": "partial", "recoverable": True, "next_action": "review"}
+    )
     assert should_resume_target({"status": "partial", "recoverable": True})
     assert derive_target_action({"status": "failed", "error": "validation: bad title"}) == "fix_input"
     assert derive_target_action({"status": "failed"}) == "review"

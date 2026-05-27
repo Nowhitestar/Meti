@@ -300,6 +300,29 @@ def _ensure_browser_ready_for_target(provider, target, *, auto_recover: bool):
     return diag
 
 
+def _resume_skip_reason(action: str) -> str:
+    return f"next-action-{action.replace('_', '-')}"
+
+
+def _carry_forward_target_result(run, target, previous: dict, action: str) -> None:
+    run.add_target_result(
+        name=previous.get("name", target.name),
+        account=previous.get("account", target.account),
+        status=previous.get("status", "failed"),
+        mode_actual=previous.get("mode_actual", "dry-run"),
+        external_id=previous.get("external_id"),
+        draft_url=previous.get("draft_url"),
+        error=previous.get("error"),
+        error_code=previous.get("error_code"),
+        error_kind=previous.get("error_kind"),
+        recoverable=bool(previous.get("recoverable", False)),
+        manual_recovery=previous.get("manual_recovery"),
+        next_action=action,
+        extras=previous.get("extras") or {},
+        violations=previous.get("violations") or [],
+    )
+
+
 # Per-provider hints for the "next step" line in the publish checklist.
 _NEXT_STEP_LABELS = {
     "wechat-article": "review at the URL above; click 发表 in MP when ready",
@@ -411,11 +434,11 @@ def cmd_list(args: argparse.Namespace) -> int:
 
 
 def cmd_resume(args: argparse.Namespace) -> int:
-    """Re-execute targets that didn't reach status=ok in a previous run.
+    """Re-execute targets whose previous run contract is resumable.
 
-    v0.3 baseline: target-level resume. Re-runs `prepare + execute` for any
-    target whose previous status was failed/skipped/partial. Targets already
-    at status=ok are skipped (logged as RESUME_SKIP).
+    Target-level resume uses the core-derived `next_action` contract. Only
+    `next_action=resume` targets run again; ok, review, and fix-input targets
+    are carried forward.
 
     Future (v0.4+): step-level resume using `Run.checkpoint()` for finer
     granularity (e.g. skip already-uploaded thumbs).
@@ -426,7 +449,7 @@ def cmd_resume(args: argparse.Namespace) -> int:
     from core.errors import MetiError
     from core.manifest import load_manifest
     from core.provider import ProviderRegistry
-    from core.run import Run
+    from core.run import Run, derive_target_action, should_resume_target
 
     run_dir = Path(args.run_dir).resolve()
     if not run_dir.exists():
@@ -457,25 +480,30 @@ def cmd_resume(args: argparse.Namespace) -> int:
         only = set(args.target.split(",")) if args.target else None
 
         for t in m.targets:
-            if only and t.name not in only:
-                continue
-            prev = prev_targets.get(t.name, {})
-            prev_status = prev.get("status")
-            if prev_status == "ok":
-                run.log("RESUME_SKIP", target=t.name, reason="already-ok")
-                # Carry forward the previous successful result so finalize()
-                # writes a coherent result.json (don't lose the external_id).
-                run.add_target_result(
-                    name=prev.get("name", t.name),
-                    account=prev.get("account", t.account),
-                    status="ok",
-                    mode_actual=prev.get("mode_actual", "dry-run"),
-                    external_id=prev.get("external_id"),
-                    draft_url=prev.get("draft_url"),
-                )
-                continue
+            selected = only is None or t.name in only
+            prev = prev_targets.get(t.name)
+            if prev is not None:
+                action = derive_target_action(prev)
+                if not selected:
+                    run.log("RESUME_SKIP", target=t.name, reason="target-filter", next_action=action)
+                    _carry_forward_target_result(run, t, prev, action)
+                    continue
+                if not should_resume_target(prev):
+                    run.log("RESUME_SKIP", target=t.name, reason=_resume_skip_reason(action))
+                    _carry_forward_target_result(run, t, prev, action)
+                    continue
+                prev_status = prev.get("status")
+            else:
+                if not selected:
+                    continue
+                prev_status = None
 
-            run.log("RESUME_RETRY", target=t.name, prev_status=prev_status)
+            run.log(
+                "RESUME_RETRY",
+                target=t.name,
+                reason="next-action-resume",
+                prev_status=prev_status,
+            )
             try:
                 provider = reg.resolve(t.name)
                 cap_key = (

@@ -68,14 +68,18 @@ def _truthy(value: Any) -> bool:
 
 def derive_target_action(target: Any) -> str:
     status = str(_target_get(target, "status", "") or "").lower()
+    existing_action = str(_target_get(target, "next_action", "") or "").lower()
+    if status == "ok":
+        return "none"
+    if existing_action in NEXT_ACTIONS - {"none"}:
+        return existing_action
+
     mode_actual = str(_target_get(target, "mode_actual", "") or "").lower()
     error_kind = str(_target_get(target, "error_kind", "") or "").lower()
     error_code = str(_target_get(target, "error_code", "") or "").lower()
     error = str(_target_get(target, "error", "") or "").lower()
     recoverable = _truthy(_target_get(target, "recoverable", False))
 
-    if status == "ok":
-        return "none"
     if error_kind == "review_needed" or mode_actual == "failed-needs-review":
         return "review"
     if recoverable and status in {"failed", "partial", "skipped"}:
@@ -182,6 +186,7 @@ class _TargetResult:
     error_kind: str | None = None
     recoverable: bool = False
     manual_recovery: str | None = None
+    next_action: str | None = None
     extras: dict[str, Any] = field(default_factory=dict)
     violations: list[dict[str, Any]] = field(default_factory=list)
 
@@ -240,6 +245,7 @@ class Run:
         error_kind: str | None = None,
         recoverable: bool = False,
         manual_recovery: str | None = None,
+        next_action: str | None = None,
         extras: dict[str, Any] | None = None,
         violations: list[dict[str, Any]] | None = None,
     ) -> None:
@@ -270,6 +276,7 @@ class Run:
                 error_kind=error_kind,
                 recoverable=recoverable,
                 manual_recovery=sanitize_artifact_value(manual_recovery),
+                next_action=next_action,
                 extras=sanitize_artifact_value(extras or {}),
                 violations=sanitize_artifact_value(violations or []),
             )
@@ -311,6 +318,8 @@ class Run:
         for target in self.targets:
             payload = sanitize_artifact_value(asdict(target))
             payload["next_action"] = derive_target_action(payload)
+            if payload["next_action"] is None:
+                payload["next_action"] = "none"
             targets.append(payload)
         summary = derive_run_summary(targets)
         result = {

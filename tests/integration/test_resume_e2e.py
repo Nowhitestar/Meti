@@ -1,7 +1,6 @@
 """Integration tests for `meti resume <run-dir>`.
 
-v0.3 P1a: target-level resume. Re-runs prepare+execute for any target
-whose previous status != ok.
+Resume retries only targets whose run contract says `next_action=resume`.
 """
 
 from __future__ import annotations
@@ -48,6 +47,7 @@ def test_resume_skips_ok_targets_reruns_failed(tmp_path):
         if t["name"] == "x-article":
             t["status"] = "failed"
             t["error"] = "simulated transient failure"
+            t["recoverable"] = True
     result_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
 
     # Run resume
@@ -76,6 +76,7 @@ def test_resume_skips_ok_targets_reruns_failed(tmp_path):
     assert "target=wechat-article" in log
     assert "RESUME_RETRY" in log
     assert "target=x-article" in log
+    assert "reason=next-action-resume" in log
 
 
 def test_resume_target_filter_only_reruns_chosen(tmp_path):
@@ -93,6 +94,7 @@ def test_resume_target_filter_only_reruns_chosen(tmp_path):
     result = json.loads(result_path.read_text())
     for t in result["targets"]:
         t["status"] = "failed"
+        t["recoverable"] = True
     result_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
 
     # Resume only x-article
@@ -111,14 +113,15 @@ def test_resume_target_filter_only_reruns_chosen(tmp_path):
     # log entries from the resume.
     resume_section = log.split("RESUME_START")[-1]
     assert "target=x-article" in resume_section
-    # wechat-article and substack didn't get retried (target filter)
-    # The earlier RUN/TARGET sections will mention them, but the resume
-    # section should not.
+    # wechat-article and substack are carried forward by target filter,
+    # but they are not retried.
+    assert "RESUME_SKIP  target=wechat-article  reason=target-filter" in resume_section
+    assert "RESUME_SKIP  target=substack  reason=target-filter" in resume_section
     assert "RESUME_RETRY  target=wechat-article" not in resume_section
     assert "RESUME_RETRY  target=substack" not in resume_section
 
 
-def test_resume_retries_partial_and_review_needed_targets(tmp_path):
+def test_resume_retries_partial_and_skips_review_needed_targets(tmp_path):
     p = _run_mmp(
         "publish",
         str(FIXTURE),
@@ -134,10 +137,17 @@ def test_resume_retries_partial_and_review_needed_targets(tmp_path):
             t["status"] = "partial"
             t["mode_actual"] = "partial"
             t["error_code"] = "selector_drift"
+            t["error_kind"] = "recoverable"
+            t["recoverable"] = True
         if t["name"] == "substack":
             t["status"] = "failed"
             t["mode_actual"] = "failed-needs-review"
             t["error_code"] = "autosave_timeout_needs_review"
+            t["error_kind"] = "review_needed"
+            t["recoverable"] = True
+            t["manual_recovery"] = "Inspect the open editor tab before retrying."
+            t["extras"] = {"current_url": "https://substack.com/p/edit?state=secret"}
+            t["violations"] = [{"code": "NEEDS_REVIEW"}]
     result_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
 
     p = _run_mmp(
@@ -151,7 +161,55 @@ def test_resume_retries_partial_and_review_needed_targets(tmp_path):
     resume_section = log.split("RESUME_START")[-1]
     assert "RESUME_SKIP  target=wechat-article" in resume_section
     assert "RESUME_RETRY  target=x-article" in resume_section
-    assert "RESUME_RETRY  target=substack" in resume_section
+    assert "RESUME_RETRY  target=substack" not in resume_section
+    assert "RESUME_SKIP  target=substack  reason=next-action-review" in resume_section
+
+    resumed = json.loads(result_path.read_text())
+    by_name = {t["name"]: t for t in resumed["targets"]}
+    assert by_name["substack"]["status"] == "failed"
+    assert by_name["substack"]["next_action"] == "review"
+    assert by_name["substack"]["recoverable"] is True
+    assert by_name["substack"]["error_code"] == "autosave_timeout_needs_review"
+    assert by_name["substack"]["error_kind"] == "review_needed"
+    assert by_name["substack"]["manual_recovery"] == "Inspect the open editor tab before retrying."
+    assert by_name["substack"]["extras"]["current_url"] == (
+        "https://substack.com/p/edit?state=[REDACTED]"
+    )
+    assert by_name["substack"]["violations"] == [{"code": "NEEDS_REVIEW"}]
+
+
+def test_resume_target_filter_does_not_force_review_target(tmp_path):
+    p = _run_mmp(
+        "publish",
+        str(FIXTURE),
+        env_extra={"METI_RUNS_DIR": str(tmp_path / "runs")},
+    )
+    assert p.returncode == 0, p.stderr
+    rd = next((tmp_path / "runs").iterdir())
+
+    result_path = rd / "result.json"
+    result = json.loads(result_path.read_text())
+    for t in result["targets"]:
+        if t["name"] == "substack":
+            t["status"] = "failed"
+            t["mode_actual"] = "failed-needs-review"
+            t["error_kind"] = "review_needed"
+            t["recoverable"] = True
+            t["next_action"] = "review"
+    result_path.write_text(json.dumps(result, indent=2, ensure_ascii=False))
+
+    p = _run_mmp(
+        "resume",
+        str(rd),
+        "--target",
+        "substack",
+        env_extra={"METI_RUNS_DIR": str(tmp_path / "runs")},
+    )
+    assert p.returncode == 0, p.stderr
+
+    resume_section = (rd / "publish-log.md").read_text().split("RESUME_START")[-1]
+    assert "RESUME_RETRY  target=substack" not in resume_section
+    assert "RESUME_SKIP  target=substack  reason=next-action-review" in resume_section
 
 
 def test_resume_missing_run_dir_errors(tmp_path):
