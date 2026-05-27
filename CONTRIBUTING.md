@@ -12,16 +12,49 @@ For the architecture overview, read [`docs/architecture.md`](docs/architecture.m
 # 1. Clone + editable install
 git clone https://github.com/Nowhitestar/meti.git
 cd meti
-pip install -e ".[dev]"
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
 
-# 2. Smoke test (no network, no platform side effects)
-meti --help
-python -m pytest -q
-python -m ruff check . && python -m ruff format --check .
-python -m mypy core
+# 2. Basic CLI check
+.venv/bin/meti --help
 ```
 
-All four commands must pass before opening a PR. CI runs the same matrix across macOS + Ubuntu × Python 3.10/3.11/3.12.
+The editable dev install brings in runtime and test dependencies, including
+`pyrage` for the encrypted vault and `tomli_w` for settings writes. Prefer this
+venv path over global pip: Homebrew Python can reject global editable installs
+with PEP 668 externally-managed-environment errors.
+
+## Verification layers
+
+### Quick
+
+Run focused tests for the area you changed:
+
+```bash
+.venv/bin/python -m pytest -q tests/core/test_provider.py
+.venv/bin/python -m pytest -q providers/wechat_image/tests/test_provider.py providers/xiaohongshu/tests/test_provider.py
+.venv/bin/python -m pytest -q tests/core/test_browser.py tests/integration/test_browser_cli.py
+```
+
+### Smoke
+
+Run the no-network local smoke flow with isolated state:
+
+```bash
+METI_RUNS_DIR="$(mktemp -d)" XDG_CONFIG_HOME="$(mktemp -d)" .venv/bin/python scripts/test_local.py
+```
+
+### Full
+
+Run the full local gate before opening a PR:
+
+```bash
+make PYTHON=.venv/bin/python test
+```
+
+This matches the project quality surface in `pyproject.toml`: pytest, Ruff
+check, Ruff format check, mypy on `core`, and the no-network smoke script. CI
+runs the same style of checks across macOS + Ubuntu × Python 3.10/3.11/3.12.
 
 ## What kind of changes are most welcome
 
@@ -55,12 +88,12 @@ cp -r providers/substack/ providers/<your-platform>/
 
 Then add the new provider's name to the `targets` schema enum and to the README's "See it" table.
 
-**Real-account verification is mandatory before merge.** A working unit-test suite is necessary but not sufficient — at least one PR comment must show:
-
-- The actual draft URL / ID returned by your provider on a real run
-- A screenshot of the resulting draft in the platform's draft folder
-
-This catches the things mocks can't: cookie expiry, platform automation flags, content-rule edge cases, network races. See [`docs/manual-verification.md`](docs/manual-verification.md) for the checklist we run before tagging releases.
+**Real-account verification is mandatory before merge.** A working unit-test
+suite is necessary but not sufficient for new or changed browser-flow
+providers. Use [`docs/manual-verification.md`](docs/manual-verification.md) for
+the manual, draft-only checklist, and keep private evidence out of git: no raw
+draft URLs with tokens, account names, screenshots, private run dirs, or live
+platform artifacts in tracked files.
 
 ## Commits, PRs, releases
 

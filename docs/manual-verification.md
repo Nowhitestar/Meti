@@ -1,7 +1,40 @@
 # Manual Verification Checklist
 
-Real account testing is **not** in CI. Run these locally before tagging a
-release.
+Real-account testing is **not** in CI and is never part of default pytest.
+Automated tests use mocks and fixtures only; live checks are manual,
+draft-only, and stop before final public publish controls.
+
+## Privacy checklist
+
+Do not commit or paste into tracked files:
+
+- private screenshots
+- raw draft URLs with tokens or sensitive query strings
+- account names or account identifiers
+- private run directories
+- raw live platform artifacts
+
+Record only sanitized outcomes, such as "draft visible in platform draft
+folder" and redacted IDs when needed.
+
+## Shared setup
+
+For browser-flow providers, verify the OpenCLI Bridge before live checks:
+
+```bash
+meti browser status
+meti browser doctor
+```
+
+If a provider session is expired, open the login page in your real Chrome:
+
+```bash
+meti browser login wechat-image
+meti browser login xiaohongshu
+meti browser login x-article
+meti browser login x-thread
+meti browser login substack
+```
 
 ## wechat-article
 
@@ -16,7 +49,7 @@ Steps:
 meti setup wechat-article
 # Enter WECHAT_APP_ID and WECHAT_APP_SECRET when prompted
 meti doctor
-# Expect: providers >= 5; accounts: wechat-article:default
+# Expect: providers >= 6; accounts: wechat-article:default
 meti publish examples/longform.yaml --mode-override dry-run
 # Expect: RUN_DIR <path>; result.json status=ok mode_actual=dry-run
 meti publish examples/longform.yaml --mode-override draft
@@ -29,37 +62,72 @@ Cleanup: delete the draft from the WeChat console.
 ## xiaohongshu
 
 Prerequisites:
-- xiaohongshu skill installed locally with `xhs-login` cookie captured
-- `XHS_COOKIE_PATH` set in vault to that cookie file
+- Chrome is logged in to Xiaohongshu Creator Studio
+- OpenCLI Bridge reports ready
 
 ```bash
-meti setup xiaohongshu
+meti browser status
+meti browser login xiaohongshu
 meti publish examples/image-post.yaml --mode-override dry-run
 meti publish examples/image-post.yaml --mode-override draft
-# Expect: result.json mode_actual=draft-local
-# Verify: <draft_path> file exists and contains the payload
+# Expect: result.json mode_actual=draft-platform or a recoverable browser-flow failure
+# Verify manually: Creator Studio 草稿箱 shows the draft, then delete it
 ```
 
 ## wechat-image
 
+Prerequisites:
+- Chrome is logged in to mp.weixin.qq.com
+- OpenCLI Bridge reports ready
+
 ```bash
+meti browser status
+meti browser login wechat-image
 meti publish examples/image-post.yaml --mode-override draft
-# Expect: <run-dir>/packs/wechat-image/browser-flow.md exists
-# Verify: open the guide manually, confirm steps are accurate
+# Expect: result.json mode_actual=draft-platform with safe draft evidence
+# Verify manually: mp.weixin.qq.com 草稿箱 shows the 贴图 draft, then delete it
 ```
 
 ## x-article
 
+Prerequisites:
+- Chrome is logged in to X
+- The account can use X Articles
+
 ```bash
+meti browser status
+meti browser login x-article
 meti publish examples/longform.yaml --mode-override draft
-# Expect: result.json connector_status=not-implemented
-# Manually follow the TODO-connector.md to create a draft
-# Verify: x.com/i/articles → drafts shows the new entry
+# Expect: result.json mode_actual=draft-platform with safe article draft evidence
+# Verify manually: x.com/i/articles shows the draft, then delete it
+```
+
+## x-thread
+
+Prerequisites:
+- Chrome is logged in to X
+
+```bash
+meti browser status
+meti browser login x-thread
+meti publish examples/thread.yaml --mode-override draft
+# Expect: composer is filled and Meti stops before Post all
+# Verify manually: review the composer, then discard it without posting
 ```
 
 ## substack
 
-Same pattern as x-article.
+Prerequisites:
+- Chrome is logged in to Substack
+- Manifest target options include `publication_url`, or `SUBSTACK_PUBLICATION_URL` is set
+
+```bash
+meti browser status
+meti browser login substack
+meti publish examples/longform.yaml --mode-override draft
+# Expect: result.json mode_actual=draft-platform with safe draft evidence, or a clear publication URL configuration error
+# Verify manually: Substack publication dashboard shows the draft, then delete it
+```
 
 ## Cross-host check
 
@@ -77,7 +145,9 @@ python3 scripts/meti.py list accounts
 
 Tag a release only when:
 - [ ] wechat-article real-draft round-trip green
-- [ ] xiaohongshu local-draft round-trip green
-- [ ] wechat-image guide is accurate
-- [ ] x-article + substack TODO docs accurate
+- [ ] xiaohongshu browser-flow draft round-trip green
+- [ ] wechat-image browser-flow draft round-trip green
+- [ ] x-article browser-flow draft round-trip green
+- [ ] x-thread composer draft/review flow stops before public posting
+- [ ] substack browser-flow draft round-trip green
 - [ ] Cross-host vault read consistent

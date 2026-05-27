@@ -61,9 +61,15 @@ git clone https://github.com/Nowhitestar/meti.git ~/.openclaw/skills/meti
 **Direct CLI** (Python ≥ 3.10)
 
 ```bash
-pip install -e ".[dev]"
-meti --help
+python3 -m venv .venv
+.venv/bin/python -m pip install -e ".[dev]"
+.venv/bin/meti --help
 ```
+
+The editable dev install includes runtime dependencies such as `pyrage` and
+`tomli_w`. Using a venv avoids Homebrew Python's PEP 668
+externally-managed-environment failure; use global pip only in environments
+where global installs are explicitly allowed.
 
 **Optional: OpenCLI Bridge** for `wechat-image`, `xiaohongshu`, `x-article`, `x-thread`, and `substack`. One-time setup:
 

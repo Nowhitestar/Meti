@@ -1,19 +1,21 @@
 .PHONY: test lint typecheck unit smoke clean
 
+PYTHON ?= python3
+
 test: lint typecheck unit smoke
 
 unit:
-	python3 -m pytest -q
+	$(PYTHON) -m pytest -q
 
 lint:
-	python3 -m ruff check .
-	python3 -m ruff format --check .
+	$(PYTHON) -m ruff check .
+	$(PYTHON) -m ruff format --check .
 
 typecheck:
-	python3 -m mypy core
+	$(PYTHON) -m mypy core
 
 smoke:
-	python3 scripts/test_local.py
+	$(PYTHON) scripts/test_local.py
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache __pycache__
