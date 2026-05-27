@@ -5,7 +5,11 @@ import pytest
 import yaml
 
 from core.provider import Provider, ProviderRegistry
-from core.provider_metadata import discover_provider_manifests, load_provider_manifest
+from core.provider_metadata import (
+    ProviderManifest,
+    discover_provider_manifests,
+    load_provider_manifest,
+)
 
 BUNDLED_PROVIDER_DIR = Path(__file__).resolve().parents[2] / "providers"
 
@@ -45,7 +49,7 @@ def _write_manifest(
 
 def _valid_provider_body(name: str, display_name: str = "Local Demo") -> str:
     return f'''
-from core.provider import Provider
+from core.provider import CredentialSpec, Provider
 from core.rules import PlatformRules
 
 
@@ -54,7 +58,7 @@ class LocalDemoProvider(Provider):
     display_name = "{display_name}"
     media_types = ["longform"]
     capabilities = {{"draft": True, "publish": False, "schedule": False}}
-    required_credentials = []
+    required_credentials = [CredentialSpec(key="LOCAL_TOKEN", description="x", secret=True)]
     platform_rules = PlatformRules()
 
     def validate(self, manifest, target):
@@ -96,6 +100,37 @@ def _assert_metadata_field(provider_name: str, field: str, actual: Any, expected
     if field in METADATA_CONSISTENCY_EXCEPTIONS.get(provider_name, {}):
         return
     assert actual == expected, f"{provider_name}.{field} drifted from provider.yaml"
+
+
+def _assert_manifest_matches_provider(manifest: ProviderManifest, provider: Provider) -> None:
+    _assert_metadata_field(manifest.name, "name", provider.name, manifest.name)
+    _assert_metadata_field(
+        manifest.name,
+        "display_name",
+        provider.display_name,
+        manifest.display_name,
+    )
+    _assert_metadata_field(manifest.name, "media_types", provider.media_types, manifest.media_types)
+    _assert_metadata_field(
+        manifest.name,
+        "capabilities",
+        provider.capabilities,
+        manifest.capabilities,
+    )
+    _assert_metadata_field(
+        manifest.name,
+        "required_credentials",
+        _credential_dicts(provider),
+        _manifest_credential_dicts(manifest.required_credentials),
+    )
+    _assert_metadata_field(manifest.name, "entry_module", manifest.module_name, "provider")
+    _assert_metadata_field(
+        manifest.name,
+        "entry_class",
+        provider.__class__.__name__,
+        manifest.class_name,
+    )
+    _assert_metadata_field(manifest.name, "schema_version", manifest.schema_version, 1)
 
 
 def test_load_provider_manifest_reads_yaml_without_importing_provider(tmp_path: Path) -> None:
@@ -194,7 +229,30 @@ def test_trusted_user_metadata_loads_without_importing_untrusted_providers(tmp_p
 
     names = [info.name for info in registry.list()]
     assert names == ["bundled-only", "trusted-one"]
-    assert registry.resolve("trusted-one").name == "trusted-one"
+    trusted_manifest = next(
+        manifest
+        for manifest in discover_provider_manifests(user, source="user")
+        if manifest.name == "trusted-one"
+    )
+    _assert_manifest_matches_provider(trusted_manifest, registry.resolve("trusted-one"))
+
+
+def test_trusted_user_metadata_consistency_fails_on_class_drift(tmp_path: Path) -> None:
+    user = tmp_path / "user"
+    user.mkdir()
+    _write_manifest(
+        user,
+        name="trusted-one",
+        snake="trusted_one",
+        body=_valid_provider_body("trusted-one", display_name="Drifted Display Name"),
+    )
+
+    registry = ProviderRegistry(bundled_dir=tmp_path / "no_bundled", user_dir=user)
+    registry.discover(trusted_user_providers={"trusted-one"})
+    trusted_manifest = discover_provider_manifests(user, source="user")[0]
+
+    with pytest.raises(AssertionError, match="display_name drifted"):
+        _assert_manifest_matches_provider(trusted_manifest, registry.resolve("trusted-one"))
 
 
 def test_bundled_provider_manifests_match_provider_classes() -> None:
@@ -205,32 +263,4 @@ def test_bundled_provider_manifests_match_provider_classes() -> None:
     assert manifests
     assert METADATA_CONSISTENCY_EXCEPTIONS == {}
     for manifest in manifests:
-        provider = registry.resolve(manifest.name)
-        _assert_metadata_field(manifest.name, "name", provider.name, manifest.name)
-        _assert_metadata_field(
-            manifest.name,
-            "display_name",
-            provider.display_name,
-            manifest.display_name,
-        )
-        _assert_metadata_field(manifest.name, "media_types", provider.media_types, manifest.media_types)
-        _assert_metadata_field(
-            manifest.name,
-            "capabilities",
-            provider.capabilities,
-            manifest.capabilities,
-        )
-        _assert_metadata_field(
-            manifest.name,
-            "required_credentials",
-            _credential_dicts(provider),
-            _manifest_credential_dicts(manifest.required_credentials),
-        )
-        _assert_metadata_field(manifest.name, "entry_module", manifest.module_name, "provider")
-        _assert_metadata_field(
-            manifest.name,
-            "entry_class",
-            provider.__class__.__name__,
-            manifest.class_name,
-        )
-        _assert_metadata_field(manifest.name, "schema_version", manifest.schema_version, 1)
+        _assert_manifest_matches_provider(manifest, registry.resolve(manifest.name))
