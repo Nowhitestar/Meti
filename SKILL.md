@@ -34,6 +34,17 @@ Subcommands:
 - `doctor` — self-check
 - `wizard [--type ... --targets ...]` — conversational manifest builder
 
+## Distribution and upgrades
+
+For Claude Code local plugin install, future marketplace install, OpenClaw
+skill install, reinstall-first upgrade guidance, and release verification, read
+`docs/distribution.md`. The release gate is draft-safe and account-free by
+default:
+
+```bash
+python scripts/check_release.py
+```
+
 ## Default mode = draft
 
 Every run defaults to `mode: draft`. Public publishing requires explicit

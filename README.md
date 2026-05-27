@@ -39,14 +39,16 @@ All browser-flow providers reuse your logged-in Chrome session; Meti does not as
 
 ## Install
 
-**As a Claude Code plugin** (recommended)
+**As a Claude Code local plugin** (current recommended path)
 
 ```bash
 git clone https://github.com/Nowhitestar/meti.git
 # Claude Code: settings → plugins → load from directory
 ```
 
-The Claude Code marketplace submission is pending; once landed the install becomes:
+**As a Claude Code marketplace plugin** (future path)
+
+The Claude Code marketplace submission is pending. Once Meti is listed, the install becomes:
 
 ```
 /plugin install meti
@@ -80,6 +82,14 @@ meti browser status          # → OK Browser Bridge connected
 ```
 
 Full setup: [docs/browser-connectors.md](docs/browser-connectors.md).
+
+Distribution, clean install, upgrade, and pre-release checks are documented in
+[docs/distribution.md](docs/distribution.md). The automated release gate is
+draft-safe and account-free by default:
+
+```bash
+python scripts/check_release.py
+```
 
 ## Quickstart
 
@@ -177,9 +187,9 @@ tests/                 # 142 unit + integration tests
 - ✅ **v0.3.2** — `wechat-image` (贴图) connector — solves the local-file-upload + request-signing field problem
 - ✅ **v0.4** — Rebrand to Meti
 - ✅ **v0.4.x** — `xiaohongshu` and `x-thread` browser-flow draft paths
-- ⏳ **v0.4.x** — `wechat-channel` (视频号) connector
-- ⏳ **v0.5** — Multi-account routing (`target.account: <name>`) + per-provider session-expiry detection
-- ⏳ **v1.0** — Public marketplace listings (Claude Code plugin store, OpenClaw)
+- 🔒 **v0.4.x** — Marketplace and distribution readiness: version sync, release gate, clean install docs, submission packet
+- 💤 **Deferred** — `wechat-channel` (视频号) connector
+- 💤 **Deferred** — Multi-account routing (`target.account: <name>`) + per-provider session-expiry detection
 
 ## Contributing
 

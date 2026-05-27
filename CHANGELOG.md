@@ -2,6 +2,23 @@
 
 All notable changes to Meti are documented here. Versions follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### Added
+
+- Release readiness gate: `python scripts/check_release.py` validates version
+  synchronization, plugin/marketplace metadata, private-path hygiene, wheel
+  artifact contents, distribution docs, and no-network smoke behavior.
+- Distribution docs for Claude Code local plugin install, future marketplace
+  install, OpenClaw skill install, and reinstall-first upgrade guidance.
+- Marketplace submission packet covering descriptions, tags, install notes,
+  privacy and safety notes, verification steps, and demo asset requirements.
+
+### Changed
+
+- README roadmap now treats marketplace/distribution readiness as active v0.4.x
+  work and marks WeChat Channels plus multi-account routing as deferred.
+
 ## 0.4.3 — 2026-05-08
 
 XHS browser-flow real-account verified — found two selector issues

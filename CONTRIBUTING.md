@@ -60,6 +60,23 @@ This matches the project quality surface in `pyproject.toml`: pytest, Ruff
 check, Ruff format check, mypy on `core`, and the no-network smoke script. CI
 runs the same style of checks across macOS + Ubuntu × Python 3.10/3.11/3.12.
 
+### Release readiness
+
+Before tagging a release or preparing marketplace submission material, run the
+one-command release gate:
+
+```bash
+python scripts/check_release.py
+# or
+make PYTHON=.venv/bin/python release-check
+```
+
+The release gate checks version synchronization, plugin and marketplace
+metadata, private-path hygiene, built wheel contents, distribution docs, and the
+no-network smoke flow. It is draft-safe and account-free by default: it does not
+create live platform drafts, open a browser, read real credentials, or submit
+marketplace data.
+
 ## What kind of changes are most welcome
 
 In rough priority order:
@@ -104,7 +121,19 @@ platform artifacts in tracked files.
 - **Commit messages**: imperative present tense, scope-prefixed when it helps (`feat(substack):`, `fix(wechat-image):`, `docs:`, `refactor(browser):`). The recent git log is a good style reference.
 - **PRs** target `main`. Squash-merge by default. PR description should answer: what, why, how-verified.
 - **Tests required** for any code change. New providers ship with both unit tests and a real-account verification note.
-- **Releases**: maintainers tag `vMAJOR.MINOR.PATCH` on `main` after CI green; `pyproject.toml` version bump lands in the same PR as the user-visible feature.
+- **Releases**: maintainers tag `vMAJOR.MINOR.PATCH` on `main` after CI green and `python scripts/check_release.py` passes; `pyproject.toml` version bump lands in the same PR as the user-visible feature.
+
+### Prefer reinstall
+
+For existing local Claude Code plugin or OpenClaw skill installs, Prefer reinstall
+over partial update unless the exact installation layout is known and verified.
+Meti supports multiple host layouts, and reinstall reduces stale plugin
+metadata, stale `SKILL.md`, and partial local-state drift. Reinstall the code
+only; do not delete `~/.config/meti`, `~/.config/meti/credentials.json.age`, or
+`~/.config/meti/age-key.txt` unless intentionally rotating credentials.
+
+Host-native update commands such as `git pull` are acceptable only when the
+local install path is known, clean, and verified.
 
 ## Reporting bugs
 
