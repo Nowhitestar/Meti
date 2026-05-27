@@ -17,6 +17,23 @@ Do not commit or paste into tracked files:
 Record only sanitized outcomes, such as "draft visible in platform draft
 folder" and redacted IDs when needed.
 
+## Run result inspection
+
+After every live `meti publish` or `meti resume` check, inspect
+`runs/<run-id>/result.json` using the schema-v2 contract in
+[`docs/run-results.md`](run-results.md):
+
+- top-level `status`
+- top-level `next_action`
+- top-level `resume_targets`
+- top-level `review_targets`
+- each target's `status`, `mode_actual`, and `next_action`
+- safe `external_id` or `draft_url` evidence when available
+- redaction of sensitive query values as `[REDACTED]`
+
+Do not use terminal output alone as sign-off evidence. Use `publish-log.md` only
+for event-order diagnostics.
+
 ## Shared setup
 
 For browser-flow providers, verify the OpenCLI Bridge before live checks:

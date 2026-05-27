@@ -10,6 +10,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -268,7 +269,7 @@ def cmd_publish(args: argparse.Namespace) -> int:
         return 2
 
 
-def _browser_readiness_failure(run, target, diag) -> None:
+def _browser_readiness_failure(run: Any, target: Any, diag: Any) -> None:
     run.add_target_result(
         name=target.name,
         account=target.account,
@@ -284,7 +285,7 @@ def _browser_readiness_failure(run, target, diag) -> None:
     run.log("BROWSER_NOT_READY", target=target.name, code=diag.code)
 
 
-def _ensure_browser_ready_for_target(provider, target, *, auto_recover: bool):
+def _ensure_browser_ready_for_target(provider: Any, target: Any, *, auto_recover: bool) -> Any | None:
     if target.mode == "dry-run" or not getattr(provider, "browser_login_url", None):
         return None
     from core import browser as br
@@ -304,7 +305,9 @@ def _resume_skip_reason(action: str) -> str:
     return f"next-action-{action.replace('_', '-')}"
 
 
-def _carry_forward_target_result(run, target, previous: dict, action: str) -> None:
+def _carry_forward_target_result(
+    run: Any, target: Any, previous: dict[str, Any], action: str
+) -> None:
     run.add_target_result(
         name=previous.get("name", target.name),
         account=previous.get("account", target.account),
@@ -333,7 +336,7 @@ _NEXT_STEP_LABELS = {
 }
 
 
-def _print_publish_checklist(targets) -> None:
+def _print_publish_checklist(targets: list[Any]) -> None:
     """Print a per-target action checklist after a publish run.
 
     By contract, meti drafts; the user reviews and clicks the platform's

@@ -44,6 +44,10 @@ Run the no-network local smoke flow with isolated state:
 METI_RUNS_DIR="$(mktemp -d)" XDG_CONFIG_HOME="$(mktemp -d)" .venv/bin/python scripts/test_local.py
 ```
 
+When changing publish, resume, provider execution, or run artifacts, verify the
+schema-v2 `result.json` contract in [docs/run-results.md](docs/run-results.md).
+Do not infer resumability from status alone.
+
 ### Full
 
 Run the full local gate before opening a PR:

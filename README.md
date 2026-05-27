@@ -111,6 +111,11 @@ meti list runs
 meti doctor
 ```
 
+After `publish` or `resume`, inspect `runs/<run-id>/result.json` for the
+schema-v2 run contract: top-level `status`, `next_action`, `resume_targets`,
+`review_targets`, and per-target `next_action`. See
+[docs/run-results.md](docs/run-results.md).
+
 A minimal manifest:
 
 ```yaml

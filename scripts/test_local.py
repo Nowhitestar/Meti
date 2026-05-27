@@ -17,7 +17,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def _run_mmp(*args, env_extra: dict | None = None) -> subprocess.CompletedProcess:
+def _run_mmp(
+    *args: str, env_extra: dict[str, str] | None = None
+) -> subprocess.CompletedProcess[str]:
     env = dict(os.environ)
     if env_extra:
         env.update(env_extra)
