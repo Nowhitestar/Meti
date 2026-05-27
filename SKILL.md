@@ -1,7 +1,7 @@
 ---
 name: Multi-media Publisher
 description: This skill should be used when the user asks to "多媒体发布", "多平台发布", "同步发布小红书和微信图文", "发微信图文和小红书", "发布长文章到公众号/X/Substack", "cross-post", "publish everywhere", or wants one content package adapted and published/drafted across Xiaohongshu, WeChat image posts, WeChat Official Account articles, X Articles/Twitter, Substack, or future video platforms; or "新发布", "帮我发一组到", "wizard", "guide me to publish".
-version: 0.2.0
+version: 0.4.3
 ---
 
 # Multi-media Publisher / 多媒体发布
@@ -72,16 +72,21 @@ If a wizard run would result in `mode: publish` for any target, ALWAYS:
 This rule overrides any earlier user permission. Each public publish is a fresh
 ask in the active conversation.
 
-## v0.2 supported providers
+## v0.4.x bundled providers
 
 | Provider | Media | Mode support | Notes |
 |---|---|---|---|
 | `wechat-article` | longform | dry-run, draft | Real WeChat OA API; needs AppID/AppSecret |
-| `xiaohongshu` | image-post (video planned) | dry-run, draft (local) | Uses xiaohongshu skill's `draft.sh` |
-| `wechat-image` | image-post | dry-run, draft (browser-flow guide) | UI calibration TODO; guide-only path |
-| `x-article` | longform | dry-run, draft (payload + TODO) | No connector yet; manual paste step |
-| `x-thread` | thread | dry-run, draft (browser-flow, fills modal) | Stops before "Post all"; user reviews + ships |
-| `substack` | longform | dry-run, draft (payload + TODO) | No connector yet; manual paste step |
+| `wechat-image` | image-post | dry-run, draft | Browser-flow via OpenCLI/real Chrome; no API credentials |
+| `xiaohongshu` | image-post, video-post metadata | dry-run, draft | Browser-flow via OpenCLI/real Chrome Creator Studio; no raw cookie capture |
+| `x-article` | longform | dry-run, draft | Browser-flow via OpenCLI/real Chrome; requires user's logged-in X session |
+| `x-thread` | thread | dry-run, draft | Browser-flow fills the composer and stops before `Post all` |
+| `substack` | longform | dry-run, draft | Browser-flow via OpenCLI/real Chrome; publication URL comes from manifest options or env |
+
+Default automated tests use mocks and fixtures only. Live-account checks belong in
+`docs/manual-verification.md`, must stay draft-only, and must not save private
+screenshots, raw token-bearing draft URLs, account names, or live run artifacts
+into tracked files.
 
 ## Safety rules
 
@@ -118,9 +123,10 @@ python3 scripts/meti.py list runs
 ## Bundled resources
 
 - `core/` — manifest, provider, credentials, run, rules, host, errors
-- `providers/<name>/` — first-party providers (wechat-article, wechat-image, xiaohongshu, x-article, substack)
+- `providers/<name>/` — first-party providers (wechat-article, wechat-image, xiaohongshu, x-article, x-thread, substack)
 - `examples/longform.yaml` — sample manifest
 - `docs/architecture.md` — high-level architecture overview
 - `docs/provider-contract.md` — how to author a new provider
 - `docs/safety-policy.md` — draft-first / publishing safeguards
 - `docs/browser-connectors.md` — OpenCLI Bridge setup for browser-flow providers
+- `docs/manual-verification.md` — manual live-account draft checks
