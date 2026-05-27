@@ -1,16 +1,16 @@
-# Browser-flow connectors (v0.3.1+)
+# Browser-flow connectors (v0.4.x)
 
-Some platforms (X Articles, Substack) have no public draft API. meti
-drives the user's **real Chrome** via the [OpenCLI Browser
-Bridge][opencli], which is a Chrome extension + small local daemon
-that exposes browser primitives over a CLI.
+Some platform draft flows either have no public draft API or require web-only
+editor behavior. Meti drives the user's **real Chrome** via the [OpenCLI
+Browser Bridge][opencli], a Chrome extension plus small local daemon that
+exposes browser primitives over a CLI.
 
 [opencli]: https://github.com/jackwener/opencli
 
 The advantage over a fresh-Chromium / Playwright approach:
 
 - **Works inside your normal browser session.** Platform automation flags target headless Chromium and CDP-controlled instances; your everyday Chrome window is exactly what the platform expects to see.
-- **No separate login.** Your existing X / Substack login session is
+- **No separate login.** Your existing platform login session is
   reused as-is; no captcha re-solving, no 2FA dance per use.
 - **No state files to manage.** Login state lives in your Chrome
   profile, exactly where you'd expect.
@@ -31,10 +31,11 @@ Trade-offs:
 | Provider | Auth model | Browser flow? |
 |---|---|---|
 | `wechat-article` | API + AppID/Secret | No (use API) |
-| `xiaohongshu` | Local skill via `draft.sh` | No |
-| `x-article` | Browser session via OpenCLI | **Yes** (v0.3.1+) |
-| `substack` | Browser session via OpenCLI | **Yes** (v0.3.1+) |
-| `wechat-image` (贴图) | Browser session via OpenCLI | **Yes** (v0.3.2+) |
+| `wechat-image` (贴图) | Browser session via OpenCLI | **Yes** |
+| `xiaohongshu` | Browser session via OpenCLI | **Yes** |
+| `x-article` | Browser session via OpenCLI | **Yes** |
+| `x-thread` | Browser session via OpenCLI | **Yes** |
+| `substack` | Browser session via OpenCLI | **Yes** |
 
 ## Setup
 
@@ -80,9 +81,11 @@ meti browser doctor
 your real Chrome**. If you're already logged in, it's a no-op.
 
 ```bash
+meti browser login wechat-image # opens https://mp.weixin.qq.com/
+meti browser login xiaohongshu  # opens https://creator.xiaohongshu.com/login
 meti browser login x-article    # opens https://x.com/i/flow/login
+meti browser login x-thread     # opens https://x.com/i/flow/login
 meti browser login substack     # opens https://substack.com/sign-in
-meti browser login wechat-image # opens https://mp.weixin.qq.com/  (v0.3.2+)
 ```
 
 ### 5. Create a draft
@@ -91,17 +94,16 @@ meti browser login wechat-image # opens https://mp.weixin.qq.com/  (v0.3.2+)
 meti publish examples/longform.yaml --mode-override draft
 ```
 
-If the manifest includes a browser-flow provider (x-article, substack,
-or wechat-image), meti:
+If the manifest includes a browser-flow provider, meti:
 
 1. Calls `opencli browser open <provider compose URL>` in your Chrome
 2. For wechat-image: injects local image bytes via the
    `DataTransfer` API — MP's webuploader picks up the programmatic
    `change` event and POSTs to `/cgi-bin/filetransfer` normally
-3. Drives the editor (type title, body, etc.)
-4. For X/Substack: editor auto-saves while we type. For wechat-image:
-   we click MP's own "保存为草稿" button so MP's internal save logic
-   (with its request-signing wrappers) runs end-to-end
+3. Drives the editor (type title, body, images, or thread parts as appropriate)
+4. For X Articles and Substack, editor autosave provides draft evidence. For
+   WeChat image and Xiaohongshu, Meti uses the platform's own save-draft control.
+   For X thread, Meti stops before `Post all` so the user reviews and ships.
 5. Captures the draft URL / ID, returns as `external_id`
 
 If the bridge isn't connected, the run gracefully falls back to
@@ -110,7 +112,7 @@ in the run dir. The other targets (wechat-article, etc.) still run.
 
 ## Session expiry
 
-Browser sessions don't last forever. When X / Substack / WeChat MP
+Browser sessions don't last forever. When a platform
 invalidates your cookies (typically 1–4 weeks of inactivity), `meti
 publish` fails on the browser flow with a "redirected to login" error.
 Just go to the provider's site in your Chrome, log in normally, then
@@ -118,21 +120,20 @@ retry:
 
 ```bash
 # Just open it; the site remembers the rest.
-meti browser login x-article     # or substack / wechat-image
+meti browser login x-article     # or another browser-flow provider
 meti resume <run-dir>
 ```
 
 ## CI / headless environments
 
 Browser-flow providers are local-only by design. CI doesn't have a
-real Chrome with your logins, so these providers fall back to stub
-mode automatically — multi-target manifests still progress, with
-x-article / substack / wechat-image becoming manual steps in the
-run dir.
+real Chrome with your logins. Default automated tests mock browser behavior;
+live-account checks belong in `docs/manual-verification.md` and remain
+manual/draft-only.
 
 ## Selector drift / when the connector breaks
 
-X, Substack and WeChat MP ship UI changes regularly. When they break
+X, Substack, Xiaohongshu, and WeChat MP ship UI changes regularly. When they break
 selectors, the symptom is usually:
 
 ```
@@ -200,7 +201,7 @@ If MP changes UI:
 
 ## Security
 
-- Your X / Substack / WeChat MP cookies live in **your** Chrome, not
+- Browser-flow provider cookies live in **your** Chrome, not
   in meti.
 - meti doesn't read cookie databases or copy login state.
 - For `wechat-image`, image bytes are staged into the editor page in
@@ -219,12 +220,9 @@ If MP changes UI:
 - ✅ **v0.3.2**: wechat-image (贴图) connector — adds local-image
   injection via `DataTransfer` and "click MP's own save" pattern
   (no need to replicate MP's request-signing logic ourselves)
-- **v0.4**: wechat-channel (视频号) connector
-- **v0.4**: per-provider session-expiry detection (auto-prompt re-login)
-- **v0.4**: cover image upload for x-article + substack (currently
-  text-only)
-- **v0.4**: contribute reusable adapters back to OpenCLI upstream
-  (e.g. `opencli substack draft-create`)
+- ✅ **v0.4.x**: xiaohongshu and x-thread browser-flow draft paths
+- Planned: wechat-channel (视频号) connector
+- Planned: per-provider session-expiry and account-confidence checks
 
 ## Why not Playwright?
 

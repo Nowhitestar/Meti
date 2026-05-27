@@ -42,6 +42,17 @@ entry: provider:MyPlatformProvider     # python_module:ClassName, relative to th
 schema_version: 1
 ```
 
+`provider.yaml` is public metadata, but the provider class is the behavior
+source of truth. For bundled providers, `display_name`, `media_types`,
+`capabilities`, and `required_credentials` must match the class attributes.
+Default pytest includes a consistency guard for those fields.
+
+Browser-flow providers normally declare `required_credentials: []` because
+authentication lives in the user's real Chrome session through OpenCLI Bridge.
+Do not add raw cookie/token keys such as browser session cookies unless the
+provider class actually reads those keys and the credential storage risk is
+explicitly documented.
+
 ## `provider.py`
 
 Implement `Provider` from `core.provider`. Methods you must define:
@@ -113,15 +124,15 @@ MY_RULES = PlatformRules(
 
 ## Trust model for user-installed providers
 
-User providers under `~/.config/meti/providers/` are not loaded automatically
-in v0.2. The `ProviderRegistry.discover()` defaults to `trust_user=False`,
-so user folders are detected but skipped.
+User providers under `~/.config/meti/providers/` are not loaded automatically.
+The `ProviderRegistry.discover()` defaults to `trust_user=False`, so user
+folders are detected but skipped.
 
-To load a user provider in v0.2, you must explicitly call
+To load a user provider today, you must explicitly call
 `ProviderRegistry.discover(trust_user=True)` from Python — primarily intended
 for tests or power-user scripts. The CLI never enables trust automatically.
 
-v0.3 will add:
+Future releases may add:
 - A first-encounter trust prompt
 - `settings.toml.providers.trusted_user_providers` whitelist
 - Optional signature verification

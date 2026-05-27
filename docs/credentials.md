@@ -22,12 +22,17 @@ meti setup <provider> [--account <name>]
 You'll be prompted for each `required_credentials` key declared in that
 provider's `provider.yaml`. Secrets are read via `getpass` (no echo).
 
+Providers with `required_credentials: []` do not need `meti setup`. Current
+browser-flow providers (`wechat-image`, `xiaohongshu`, `x-article`,
+`x-thread`, and `substack`) authenticate through your logged-in Chrome session
+via OpenCLI Bridge; Meti does not ask you to paste or store their raw browser
+cookies.
+
 To list what's stored:
 
 ```bash
 meti list accounts
 # wechat-article:default
-# x-article:lewis
 ```
 
 To delete an account:
@@ -55,7 +60,7 @@ reference the account in the manifest:
 
 ```yaml
 targets:
-  - target: x-article
+  - target: wechat-article
     mode: draft
     account: lewis
 ```
@@ -80,7 +85,7 @@ The new key is auto-generated on first `setup` after deletion.
 
 If you find a credential leaked into one of these, report as a P0 bug.
 
-## Future (v0.3)
+## Future
 
 - macOS Keychain backend
 - Linux secret-service backend

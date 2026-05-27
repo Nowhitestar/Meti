@@ -6,9 +6,10 @@ publicly without explicit confirmation in the active conversation.
 ## Defaults
 
 - Manifest top-level `mode` defaults to `draft` if omitted by user.
-- All providers ship with `capabilities.publish: false` in v0.2.
-- Public publishing requires explicit `mode: publish` in the manifest AND a
-  second confirmation in the active conversation.
+- Bundled providers currently ship with `capabilities.publish: false`.
+- Public publishing is not enabled for bundled providers. If a future provider
+  adds it, it must require explicit `mode: publish` in the manifest AND a second
+  confirmation in the active conversation.
 
 ## Hard rules
 
@@ -43,9 +44,9 @@ To rotate the vault key:
 
 - User-installed providers under `~/.config/meti/providers/<name>/` are
   arbitrary Python.
-- v0.2 ProviderRegistry does NOT auto-load user providers — they are detected
-  but require explicit `trust_user=True` from the calling host.
-- Future v0.3: trust prompt + signature verification.
+- ProviderRegistry does NOT auto-load user providers — they are detected but
+  require explicit `trust_user=True` from the calling host.
+- Future hardening may add a trust prompt and signature verification.
 
 ## Reporting
 
