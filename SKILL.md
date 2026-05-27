@@ -30,6 +30,7 @@ Subcommands:
 - `publish <manifest.yaml> [--mode-override ...]` — prepare + execute
 - `setup <provider> [--account NAME]` — configure credentials
 - `list providers|accounts|runs` — inspect state
+- `providers list|trust|untrust` — inspect and manage trusted user providers
 - `resume <run-dir> [--target NAME]` — recover failed run
 - `doctor` — self-check
 - `wizard [--type ... --targets ...]` — conversational manifest builder
@@ -114,6 +115,14 @@ See `docs/architecture.md` for the full overview. In short:
 - **Shell**: this SKILL.md + `.claude-plugin/plugin.json`
 - **Core**: `core/` — host-agnostic Python (manifest, provider registry, vault, run lifecycle)
 - **Providers**: `providers/<name>/` (bundled) + `~/.config/meti/providers/<name>/` (user)
+
+User providers are not imported automatically. Use
+`python3 scripts/meti.py providers list` to inspect bundled, trusted, and
+untrusted providers; `python3 scripts/meti.py providers trust <name>` to enable
+a user provider by `provider.yaml.name`; and
+`python3 scripts/meti.py providers untrust <name>` to disable it. Authoring
+templates live in `docs/provider-api-template.md` and
+`docs/provider-browser-template.md`.
 
 ## Quickstart
 

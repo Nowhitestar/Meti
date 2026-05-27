@@ -13,6 +13,25 @@ JSON file and never exposes them in result/log/output.
 └── settings.toml                   # user preferences
 ```
 
+`settings.toml` also stores trusted user-provider names:
+
+```toml
+[providers]
+trusted_user_providers = ["my-platform"]
+```
+
+Manage this list through:
+
+```bash
+meti providers list
+meti providers trust <name>
+meti providers untrust <name>
+```
+
+Trust only controls whether Meti may import user provider code from
+`~/.config/meti/providers/<snake_name>/`. Credentials still live in the vault
+or environment variables.
+
 ## Adding credentials
 
 ```bash

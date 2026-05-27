@@ -116,6 +116,7 @@ meti resume runs/20260507-001255-mmp
 
 # Inspect state
 meti list providers
+meti providers list
 meti list accounts
 meti list runs
 meti doctor
@@ -148,7 +149,7 @@ tags: [ai, essay]
 
 **One language, every constraint encoded.** Meti's manifest is a YAML version of "what should land on every platform" — title length caps, tag count limits, image-format constraints all live in `providers/*/rules.py` and run before any network call. A 64-character WeChat title and a 280-character XHS title are both rejected at validate-time, not at the platform.
 
-**Provider abstraction is small on purpose.** Five methods (`validate`, `prepare`, `execute`, `health_check`, plus a registration block). New platforms drop into `providers/<name>/` and are picked up automatically. See [docs/provider-contract.md](docs/provider-contract.md).
+**Provider abstraction is small on purpose.** Five methods (`validate`, `prepare`, `execute`, `health_check`, plus a registration block). New bundled platforms drop into `providers/<name>/`; user providers live under `~/.config/meti/providers/<name>/` and require explicit `meti providers trust <name>` before their Python is imported. See [docs/provider-contract.md](docs/provider-contract.md), [docs/provider-api-template.md](docs/provider-api-template.md), and [docs/provider-browser-template.md](docs/provider-browser-template.md).
 
 **Two execute paths per platform:**
 

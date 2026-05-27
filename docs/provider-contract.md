@@ -23,6 +23,15 @@ and pack folders.
 └── tests/          # optional but encouraged
 ```
 
+## Copyable templates
+
+- `docs/provider-api-template.md` - API-flow provider with explicit
+  credentials, `CredentialSpec`, `health_check()`, dry-run behavior, draft
+  execution, and `ProviderExecutionError` wrapping.
+- `docs/provider-browser-template.md` - browser-flow provider using OpenCLI
+  Bridge, `browser_login_url`, selector isolation in `internal/browser_flow.py`,
+  no raw cookie capture, and draft-first stopping points.
+
 ## `provider.yaml`
 
 ```yaml
@@ -43,9 +52,10 @@ schema_version: 1
 ```
 
 `provider.yaml` is public metadata, but the provider class is the behavior
-source of truth. For bundled providers, `display_name`, `media_types`,
-`capabilities`, and `required_credentials` must match the class attributes.
-Default pytest includes a consistency guard for those fields.
+source of truth. For bundled providers, `name`, `display_name`, `media_types`,
+`capabilities`, `required_credentials`, `entry`, and `schema_version` must be
+machine-checkable against the class attributes. Default pytest includes a
+consistency guard for those fields.
 
 Browser-flow providers normally declare `required_credentials: []` because
 authentication lives in the user's real Chrome session through OpenCLI Bridge.
@@ -125,19 +135,45 @@ MY_RULES = PlatformRules(
 ## Trust model for user-installed providers
 
 User providers under `~/.config/meti/providers/` are not loaded automatically.
-The `ProviderRegistry.discover()` defaults to `trust_user=False`, so user
-folders are detected but skipped.
+They are arbitrary Python, so Meti static-scans `provider.yaml` first and only
+imports user code after explicit trust.
 
-To load a user provider today, you must explicitly call
-`ProviderRegistry.discover(trust_user=True)` from Python — primarily intended
-for tests or power-user scripts. The CLI never enables trust automatically.
+Inspect what Meti can see:
 
-Future releases may add:
-- A first-encounter trust prompt
-- `settings.toml.providers.trusted_user_providers` whitelist
-- Optional signature verification
+```bash
+meti providers list
+```
+
+Trust a user provider by its `provider.yaml.name`:
+
+```bash
+meti providers trust my-platform
+```
+
+This writes the manifest name to
+`settings.toml.providers.trusted_user_providers`. Remove trust with:
+
+```bash
+meti providers untrust my-platform
+```
+
+The wizard and registry reuse the same whitelist. Untrusted user providers may
+be shown as discovered, but their `provider.py` is not imported. Trusted user
+providers stay in the same manifest target namespace, so a trusted user
+provider with the same `name` as a bundled provider intentionally overrides the
+bundled one and is reported as `overrides_bundled`.
+
+Future hardening may add a first-encounter trust prompt or optional signature
+verification.
 
 See `docs/safety-policy.md` for the full third-party provider policy.
+
+## Metadata drift exceptions
+
+Metadata/class drift should not be silent. If a provider intentionally differs
+from its `provider.yaml`, add an explicit test exception with provider name,
+field, reason, and revisit note, and document the same metadata exception here.
+Current bundled providers should not rely on exceptions.
 
 ## Testing
 

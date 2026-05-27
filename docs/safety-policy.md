@@ -44,9 +44,14 @@ To rotate the vault key:
 
 - User-installed providers under `~/.config/meti/providers/<name>/` are
   arbitrary Python.
-- ProviderRegistry does NOT auto-load user providers — they are detected but
-  require explicit `trust_user=True` from the calling host.
-- Future hardening may add a trust prompt and signature verification.
+- ProviderRegistry does NOT auto-load user providers. Untrusted providers are
+  static-scanned via `provider.yaml`; their `provider.py` is not imported.
+- Explicit trust is stored in
+  `settings.toml.providers.trusted_user_providers`. Use
+  `meti providers trust <name>` to enable a user provider and
+  `meti providers untrust <name>` to disable it.
+- Future hardening may add a first-encounter trust prompt and signature
+  verification.
 
 ## Reporting
 
