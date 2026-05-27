@@ -396,7 +396,7 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
             timeout_s=SAVE_WAIT_S,
             interval_s=0.25,
         )
-    except RuntimeError:
+    except RuntimeError as exc:
         # MP sometimes leaves permanent elements with `loading` in their class
         # names, or otherwise misses our transient-settled probe, even after it
         # has saved and allocated an appmsgid. Treat a post-save appmsgid as
@@ -410,7 +410,7 @@ def create_draft(payload: dict[str, Any]) -> dict[str, Any]:
                 recoverable=True,
                 manual_recovery="Inspect the current MP editor tab; if the draft saved, resume after confirming it appears in drafts.",
                 details={"url": _redact_url(current_url)},
-            )
+            ) from exc
 
     # 7. Re-extract appmsgid (MP rewrites URL on save success).
     final_url = br.get_url()
@@ -509,7 +509,6 @@ def _upload_one_image(image_path: str, idx: int) -> None:
     # The JS injection already waits for MP's upload XHR. Keep only a short
     # paint-settle delay; the old 5s fixed wait made 9-card runs ~45s slower.
     time.sleep(0.5)
-
 
 
 def _upload_images_batch(image_paths: list[str]) -> None:
@@ -626,8 +625,9 @@ def _js_dispatch_text(text: str) -> str:
     }})()"""
 
 
-
-def _wait_for_js_condition(js: str, *, timeout_s: float = 10.0, interval_s: float = 0.25) -> dict[str, Any]:
+def _wait_for_js_condition(
+    js: str, *, timeout_s: float = 10.0, interval_s: float = 0.25
+) -> dict[str, Any]:
     """Poll a JS probe until it returns ``{"ready": true}``."""
     from core import browser as br
 
@@ -653,7 +653,6 @@ def _js_staged_payload_ready(payload_key: str, *, expected_min_chunks: int) -> s
       const count = Array.isArray(chunks) ? chunks.length : 0;
       return JSON.stringify({{ok: count >= {int(expected_min_chunks)}, key, chunks: count}});
     }})()"""
-
 
 
 _JS_SAVE_SETTLED = r"""(() => {

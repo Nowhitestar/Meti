@@ -58,12 +58,12 @@ from __future__ import annotations
 import json
 import os
 import platform
-from dataclasses import asdict, dataclass, field
-from enum import Enum
 import shutil
 import subprocess
 import time
 import uuid
+from dataclasses import asdict, dataclass, field
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -248,14 +248,21 @@ def diagnose(*, platform_url: str | None = None) -> BrowserDiagnostic:
         )
     except BrowserCommandError as exc:
         msg = str(exc).lower()
-        code = BrowserStatusCode.WORKSPACE_STALE if "stale" in msg else BrowserStatusCode.COMMAND_FAILED
+        code = (
+            BrowserStatusCode.WORKSPACE_STALE
+            if "stale" in msg
+            else BrowserStatusCode.COMMAND_FAILED
+        )
         return _diag(
             code,
             "Bound browser workspace is stale or unreachable."
             if code == BrowserStatusCode.WORKSPACE_STALE
             else "Could not inspect the bound browser workspace.",
             recoverable=True,
-            next_actions=["Run `meti browser bind` again", "Retry with `--auto-recover` if publishing"],
+            next_actions=[
+                "Run `meti browser bind` again",
+                "Retry with `--auto-recover` if publishing",
+            ],
             details={"error": str(exc)},
         )
     if not tabs:
@@ -313,9 +320,7 @@ def _node_major_for_npx(npx_path: str) -> int | None:
     if not node.exists():
         return None
     try:
-        proc = subprocess.run(
-            [str(node), "--version"], capture_output=True, text=True, timeout=5
-        )
+        proc = subprocess.run([str(node), "--version"], capture_output=True, text=True, timeout=5)
     except Exception:
         return None
     version = (proc.stdout or proc.stderr or "").strip().lstrip("v")

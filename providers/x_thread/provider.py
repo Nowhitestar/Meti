@@ -116,7 +116,9 @@ class XThreadProvider(Provider):
         except BrowserFlowError as exc:
             return ExecutionResult(
                 status="failed",
-                mode_actual="failed-needs-review" if exc.error_kind == "review_needed" else "partial",
+                mode_actual="failed-needs-review"
+                if exc.error_kind == "review_needed"
+                else "partial",
                 external_id=None,
                 error_code=exc.error_code,
                 error_kind=exc.error_kind,
@@ -158,7 +160,9 @@ class XThreadProvider(Provider):
             recoverable=bool(result.get("review_needed")),
             manual_recovery=result.get("manual_recovery"),
             extras={
-                "connector_status": "browser-review-needed" if result.get("review_needed") else "browser-ok",
+                "connector_status": "browser-review-needed"
+                if result.get("review_needed")
+                else "browser-ok",
                 "tweet_count": len(payload.get("tweets") or []),
             },
         )

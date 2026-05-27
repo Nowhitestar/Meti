@@ -42,6 +42,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+
 class BrowserFlowError(RuntimeError):
     """Structured provider-local browser-flow failure."""
 
@@ -81,7 +82,7 @@ FILE_INPUT_SELECTOR_CANDIDATES = [
     'input[type=file][accept*="jpg"][multiple]',
     'input[type=file][accept*="jpg"]',
     'input[type=file][accept*="png"]',
-    'input[type=file]',
+    "input[type=file]",
 ]
 
 # After upload, the editor expands to show title + body + actions.
@@ -483,7 +484,6 @@ def _upload_one_image(image_path: str, idx: int) -> None:
     time.sleep(0.4)
 
 
-
 def _upload_images_batch(image_paths: list[str]) -> None:
     """Inject all images at once and wait for XHS to acknowledge/render them."""
     from core import browser as br
@@ -541,8 +541,9 @@ def _upload_images_batch(image_paths: list[str]) -> None:
         )
 
 
-
-def _wait_for_js_condition(js: str, *, timeout_s: float = 10.0, interval_s: float = 0.25) -> dict[str, Any]:
+def _wait_for_js_condition(
+    js: str, *, timeout_s: float = 10.0, interval_s: float = 0.25
+) -> dict[str, Any]:
     """Poll a JS probe until it returns ``{"ready": true}``."""
     from core import browser as br
 

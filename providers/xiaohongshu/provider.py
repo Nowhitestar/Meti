@@ -118,7 +118,9 @@ class XiaohongshuProvider(Provider):
         except BrowserFlowError as exc:
             return ExecutionResult(
                 status="failed",
-                mode_actual="failed-needs-review" if exc.error_kind == "review_needed" else "partial",
+                mode_actual="failed-needs-review"
+                if exc.error_kind == "review_needed"
+                else "partial",
                 external_id=None,
                 error_code=exc.error_code,
                 error_kind=exc.error_kind,

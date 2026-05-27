@@ -95,6 +95,7 @@ def test_execute_draft_invokes_browser_flow(img_manifest, tmp_path):
 
     with (
         patch("core.browser.is_connected", return_value=True),
+        patch("core.browser.ensure_bound") as ensure_bound,
         patch(
             "providers.xiaohongshu.internal.browser_flow.create_draft",
             return_value={
@@ -109,6 +110,10 @@ def test_execute_draft_invokes_browser_flow(img_manifest, tmp_path):
     assert res.mode_actual == "draft-platform"
     assert res.external_id is None
     assert "creator.xiaohongshu.com" in (res.draft_url or "")
+    ensure_bound.assert_called_once_with(
+        url="https://creator.xiaohongshu.com/publish/publish?target=image",
+        domain="creator.xiaohongshu.com",
+    )
 
 
 def test_execute_publish_refused(img_manifest, tmp_path):

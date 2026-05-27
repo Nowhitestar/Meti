@@ -15,11 +15,13 @@ def _ready_diag() -> BrowserDiagnostic:
 
 
 def test_create_draft_happy_path_returns_durable_evidence():
-    urls = iter([
-        "https://x.com/compose/articles",
-        "https://x.com/compose/articles/edit/12345",
-        "https://x.com/compose/articles/edit/12345",
-    ])
+    urls = iter(
+        [
+            "https://x.com/compose/articles",
+            "https://x.com/compose/articles/edit/12345",
+            "https://x.com/compose/articles/edit/12345",
+        ]
+    )
     with (
         patch("core.browser.diagnose", return_value=_ready_diag()),
         patch("core.browser.open_url"),
@@ -90,11 +92,13 @@ def test_create_draft_write_button_selector_drift():
 
 
 def test_create_draft_autosave_timeout_needs_review():
-    urls = iter([
-        "https://x.com/compose/articles",
-        "https://x.com/compose/articles/edit/12345",
-        "https://x.com/compose/articles",
-    ])
+    urls = iter(
+        [
+            "https://x.com/compose/articles",
+            "https://x.com/compose/articles/edit/12345",
+            "https://x.com/compose/articles",
+        ]
+    )
     with (
         patch("core.browser.diagnose", return_value=_ready_diag()),
         patch("core.browser.open_url"),

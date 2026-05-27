@@ -73,7 +73,10 @@ def test_create_draft_editor_not_ready_structured(fake_image):
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
-        patch("core.browser.evaluate", return_value=_eval_envelope({"ready": False, "fileInputsCount": 0})),
+        patch(
+            "core.browser.evaluate",
+            return_value=_eval_envelope({"ready": False, "fileInputsCount": 0}),
+        ),
         patch("time.sleep"),
     ):
         with pytest.raises(bf.BrowserFlowError) as exc:
@@ -83,18 +86,24 @@ def test_create_draft_editor_not_ready_structured(fake_image):
 
 def test_create_draft_happy_path_multi_image(fake_image):
     home = "https://mp.weixin.qq.com/cgi-bin/home?token=999&lang=zh_CN"
-    editor_after_alloc = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
+    editor_after_alloc = (
+        "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
+    )
     final_url = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
-    eval_returns = iter([
-        _eval_envelope({"ready": True, "titleVisible": True, "fileInputsCount": 3, "appmsgid": 42}),
-        _eval_envelope({"ok": True, "chunks": 2}),
-        _eval_envelope({"ok": True, "uploaded": 2, "expected": 2}),
-        _eval_envelope({"ok": True, "value": "test title", "fallback": False}),
-        _eval_envelope({"focused": True, "currentText": ""}),
-        _eval_envelope({"inserted": True, "via": "execCommand"}),
-        _eval_envelope({"clicked": True}),
-        _eval_envelope({"ready": True, "appmsgid": "42"}),
-    ])
+    eval_returns = iter(
+        [
+            _eval_envelope(
+                {"ready": True, "titleVisible": True, "fileInputsCount": 3, "appmsgid": 42}
+            ),
+            _eval_envelope({"ok": True, "chunks": 2}),
+            _eval_envelope({"ok": True, "uploaded": 2, "expected": 2}),
+            _eval_envelope({"ok": True, "value": "test title", "fallback": False}),
+            _eval_envelope({"focused": True, "currentText": ""}),
+            _eval_envelope({"inserted": True, "via": "execCommand"}),
+            _eval_envelope({"clicked": True}),
+            _eval_envelope({"ready": True, "appmsgid": "42"}),
+        ]
+    )
     with (
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
@@ -103,7 +112,13 @@ def test_create_draft_happy_path_multi_image(fake_image):
         patch("core.browser.evaluate", side_effect=lambda *_a, **_k: next(eval_returns)),
         patch("time.sleep"),
     ):
-        result = bf.create_draft({"title": "test title", "caption": "test caption", "images": [str(fake_image), str(fake_image)]})
+        result = bf.create_draft(
+            {
+                "title": "test title",
+                "caption": "test caption",
+                "images": [str(fake_image), str(fake_image)],
+            }
+        )
     assert result["external_id"] == "42"
     assert "appmsgid=42" in result["draft_url"]
 
@@ -115,7 +130,10 @@ def test_create_draft_missing_upload_input_structured(fake_image):
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
-        patch("core.browser.evaluate", return_value=_eval_envelope({"ready": True, "fileInputsCount": 0, "appmsgid": 42})),
+        patch(
+            "core.browser.evaluate",
+            return_value=_eval_envelope({"ready": True, "fileInputsCount": 0, "appmsgid": 42}),
+        ),
         patch("time.sleep"),
     ):
         with pytest.raises(bf.BrowserFlowError) as exc:
@@ -127,11 +145,13 @@ def test_create_draft_missing_upload_input_structured(fake_image):
 def test_create_draft_upload_count_mismatch_needs_review(fake_image):
     home = "https://mp.weixin.qq.com/cgi-bin/home?token=999&lang=zh_CN"
     editor = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&appmsgid=42&token=999"
-    eval_returns = iter([
-        _eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42}),
-        _eval_envelope({"ok": True, "chunks": 1}),
-        _eval_envelope({"ok": True, "uploaded": 1, "expected": 2}),
-    ])
+    eval_returns = iter(
+        [
+            _eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42}),
+            _eval_envelope({"ok": True, "chunks": 1}),
+            _eval_envelope({"ok": True, "uploaded": 1, "expected": 2}),
+        ]
+    )
     with (
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
@@ -141,7 +161,9 @@ def test_create_draft_upload_count_mismatch_needs_review(fake_image):
         patch("time.sleep"),
     ):
         with pytest.raises(bf.BrowserFlowError) as exc:
-            bf.create_draft({"title": "t", "caption": "c", "images": [str(fake_image), str(fake_image)]})
+            bf.create_draft(
+                {"title": "t", "caption": "c", "images": [str(fake_image), str(fake_image)]}
+            )
     assert exc.value.error_code == "partial_upload_needs_review"
     assert exc.value.error_kind == "review_needed"
 
@@ -149,16 +171,18 @@ def test_create_draft_upload_count_mismatch_needs_review(fake_image):
 def test_create_draft_save_timeout_requires_durable_evidence(fake_image):
     home = "https://mp.weixin.qq.com/cgi-bin/home?token=999&lang=zh_CN"
     editor = "https://mp.weixin.qq.com/cgi-bin/appmsg?action=edit&type=77&token=999"
-    eval_returns = iter([
-        _eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": None}),
-        _eval_envelope({"ok": True, "chunks": 1}),
-        _eval_envelope({"ok": True, "uploaded": 1, "expected": 1}),
-        _eval_envelope({"ok": True, "value": "t", "fallback": False}),
-        _eval_envelope({"focused": True, "currentText": ""}),
-        _eval_envelope({"inserted": True, "via": "execCommand"}),
-        _eval_envelope({"clicked": True}),
-        _eval_envelope({"ready": False}),
-    ])
+    eval_returns = iter(
+        [
+            _eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": None}),
+            _eval_envelope({"ok": True, "chunks": 1}),
+            _eval_envelope({"ok": True, "uploaded": 1, "expected": 1}),
+            _eval_envelope({"ok": True, "value": "t", "fallback": False}),
+            _eval_envelope({"focused": True, "currentText": ""}),
+            _eval_envelope({"inserted": True, "via": "execCommand"}),
+            _eval_envelope({"clicked": True}),
+            _eval_envelope({"ready": False}),
+        ]
+    )
     with (
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
@@ -183,7 +207,10 @@ def test_image_too_large_rejected(tmp_path):
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
-        patch("core.browser.evaluate", return_value=_eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42})),
+        patch(
+            "core.browser.evaluate",
+            return_value=_eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42}),
+        ),
         patch("time.sleep"),
     ):
         with pytest.raises(ValueError, match="MP rejects"):
@@ -197,8 +224,13 @@ def test_image_not_found_raises(tmp_path):
         patch("core.browser.tab_new", return_value="fake-tab"),
         patch("core.browser.open_url"),
         patch("core.browser.get_url", side_effect=[home, editor]),
-        patch("core.browser.evaluate", return_value=_eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42})),
+        patch(
+            "core.browser.evaluate",
+            return_value=_eval_envelope({"ready": True, "fileInputsCount": 3, "appmsgid": 42}),
+        ),
         patch("time.sleep"),
     ):
         with pytest.raises(FileNotFoundError):
-            bf.create_draft({"title": "t", "caption": "c", "images": [str(tmp_path / "missing.png")]})
+            bf.create_draft(
+                {"title": "t", "caption": "c", "images": [str(tmp_path / "missing.png")]}
+            )

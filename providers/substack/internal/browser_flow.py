@@ -60,6 +60,7 @@ class BrowserFlowError(RuntimeError):
         self.details = details or {}
         super().__init__(message)
 
+
 # URL pattern after Substack auto-allocates a draft.
 EDIT_URL_PATTERN = re.compile(r"/publish/post/(\d+)")
 

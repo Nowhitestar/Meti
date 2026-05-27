@@ -15,10 +15,12 @@ def _ready_diag() -> BrowserDiagnostic:
 
 
 def test_create_draft_happy_path_returns_draft_url_and_id():
-    urls = iter([
-        "https://lewis.substack.com/publish/post/77777",
-        "https://lewis.substack.com/publish/post/77777",
-    ])
+    urls = iter(
+        [
+            "https://lewis.substack.com/publish/post/77777",
+            "https://lewis.substack.com/publish/post/77777",
+        ]
+    )
     with (
         patch("core.browser.diagnose", return_value=_ready_diag()),
         patch("core.browser.open_url") as open_url,
@@ -87,15 +89,19 @@ def test_create_draft_title_selector_drift_is_structured():
         patch("time.sleep"),
     ):
         with pytest.raises(bf.BrowserFlowError) as exc:
-            bf.create_draft({"title": "Title", "body": "Body"}, publication_url="https://lewis.substack.com")
+            bf.create_draft(
+                {"title": "Title", "body": "Body"}, publication_url="https://lewis.substack.com"
+            )
     assert exc.value.error_code == "selector_drift"
 
 
 def test_create_draft_final_url_lost_after_autosave_needs_review():
-    urls = iter([
-        "https://lewis.substack.com/publish/post/77777",
-        "https://lewis.substack.com/publish/post",
-    ])
+    urls = iter(
+        [
+            "https://lewis.substack.com/publish/post/77777",
+            "https://lewis.substack.com/publish/post",
+        ]
+    )
     with (
         patch("core.browser.diagnose", return_value=_ready_diag()),
         patch("core.browser.open_url"),

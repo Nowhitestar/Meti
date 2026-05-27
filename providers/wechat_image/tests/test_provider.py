@@ -88,6 +88,7 @@ def test_execute_draft_invokes_browser_flow(img_manifest, tmp_path):
 
     with (
         patch("core.browser.is_connected", return_value=True),
+        patch("core.browser.ensure_bound") as ensure_bound,
         patch(
             "providers.wechat_image.internal.browser_flow.create_draft",
             return_value={
@@ -103,6 +104,10 @@ def test_execute_draft_invokes_browser_flow(img_manifest, tmp_path):
     assert res.external_id == "42"
     assert res.draft_url and "appmsgid=42" in res.draft_url
     assert res.extras["connector_status"] == "browser-ok"
+    ensure_bound.assert_called_once_with(
+        url="https://mp.weixin.qq.com/",
+        domain="mp.weixin.qq.com",
+    )
 
 
 def test_health_check_reflects_bridge():

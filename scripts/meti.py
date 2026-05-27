@@ -74,7 +74,9 @@ def _build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Provider name (required for login)",
     )
-    sub_browser.add_argument("--json", action="store_true", help="Print machine-readable status JSON")
+    sub_browser.add_argument(
+        "--json", action="store_true", help="Print machine-readable status JSON"
+    )
 
     sub_wizard = sub.add_parser("wizard", help="Conversational manifest wizard")
     sub_wizard.add_argument("--type", choices=["image-post", "longform", "thread", "video-post"])

@@ -25,7 +25,12 @@ def _now_id() -> str:
 def _redact_url(url: str | None) -> str | None:
     if not url:
         return url
-    return re.sub(r"([?&](?:token|access_token|auth|code|state|session|key|secret)=)[^&#]+", r"\1REDACTED", url, flags=re.I)
+    return re.sub(
+        r"([?&](?:token|access_token|auth|code|state|session|key|secret)=)[^&#]+",
+        r"\1REDACTED",
+        url,
+        flags=re.I,
+    )
 
 
 def _redact_value(value: Any) -> Any:

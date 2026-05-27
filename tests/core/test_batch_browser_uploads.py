@@ -39,7 +39,11 @@ def test_upload_images_batch_stages_payload_then_runs_one_browser_eval(
 
     monkeypatch.setattr(br, "stage_text_payload", fake_stage_text_payload)
     monkeypatch.setattr(br, "evaluate", fake_evaluate)
-    monkeypatch.setattr(module.time, "sleep", lambda *_args, **_kwargs: pytest.fail("batch upload should not use fixed per-image sleep"))
+    monkeypatch.setattr(
+        module.time,
+        "sleep",
+        lambda *_args, **_kwargs: pytest.fail("batch upload should not use fixed per-image sleep"),
+    )
 
     module._upload_images_batch([str(image1), str(image2)])
 
@@ -85,11 +89,13 @@ def test_upload_images_batch_rejects_partial_upload_ack(tmp_path, monkeypatch, m
 )
 def test_wait_for_js_condition_polls_until_ready(monkeypatch, module_name):
     module = __import__(module_name, fromlist=["dummy"])
-    states = iter([
-        {"ready": False, "count": 0},
-        {"ready": False, "count": 1},
-        {"ready": True, "count": 2},
-    ])
+    states = iter(
+        [
+            {"ready": False, "count": 0},
+            {"ready": False, "count": 1},
+            {"ready": True, "count": 2},
+        ]
+    )
     sleeps = []
 
     import core.browser as br
@@ -97,7 +103,9 @@ def test_wait_for_js_condition_polls_until_ready(monkeypatch, module_name):
     monkeypatch.setattr(br, "evaluate", lambda _js: next(states))
     monkeypatch.setattr(module.time, "sleep", lambda seconds: sleeps.append(seconds))
 
-    result = module._wait_for_js_condition("(() => JSON.stringify({ready:true}))()", timeout_s=1, interval_s=0.01)
+    result = module._wait_for_js_condition(
+        "(() => JSON.stringify({ready:true}))()", timeout_s=1, interval_s=0.01
+    )
 
     assert result["ready"] is True
     assert len(sleeps) == 2

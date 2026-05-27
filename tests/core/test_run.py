@@ -130,7 +130,10 @@ def test_result_json_preserves_structured_fields_and_redacts_token_urls(tmp_path
         error_kind="browser_readiness",
         recoverable=True,
         manual_recovery="Log in and resume",
-        extras={"current_url": "https://x.com/login?auth=topsecret", "nested": ["https://e.test/?secret=s"]},
+        extras={
+            "current_url": "https://x.com/login?auth=topsecret",
+            "nested": ["https://e.test/?secret=s"],
+        },
     )
     r.finalize()
     target = json.loads((r.dir / "result.json").read_text())["targets"][0]

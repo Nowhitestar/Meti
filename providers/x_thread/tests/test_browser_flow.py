@@ -20,7 +20,10 @@ def test_compose_thread_happy_path_prefills_without_posting():
         patch("core.browser.diagnose", return_value=_ready_diag()),
         patch("core.browser.tab_new", return_value="tab-1") as tab_new,
         patch("core.browser.get_url", return_value=bf.COMPOSE_POST_URL),
-        patch("core.browser.type_text", side_effect=lambda sel, text, tab=None: typed.append((sel, text, tab))),
+        patch(
+            "core.browser.type_text",
+            side_effect=lambda sel, text, tab=None: typed.append((sel, text, tab)),
+        ),
         patch("core.browser.evaluate", return_value={"result": '{"ok": true}'}),
         patch("core.browser.keys") as keys,
         patch("time.sleep"),
@@ -82,7 +85,10 @@ def test_compose_thread_missing_add_button_needs_review():
         patch("core.browser.tab_new", return_value="tab-1"),
         patch("core.browser.get_url", return_value=bf.COMPOSE_POST_URL),
         patch("core.browser.type_text"),
-        patch("core.browser.evaluate", return_value={"result": '{"ok": false, "reason": "no_add_button"}'}),
+        patch(
+            "core.browser.evaluate",
+            return_value={"result": '{"ok": false, "reason": "no_add_button"}'},
+        ),
         patch("time.sleep"),
     ):
         with pytest.raises(bf.BrowserFlowError) as exc:

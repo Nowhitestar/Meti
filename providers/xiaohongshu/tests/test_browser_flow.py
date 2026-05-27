@@ -22,14 +22,16 @@ def _eval_envelope(value: object) -> dict:
 
 
 def test_create_draft_happy_path_autosave(fake_image):
-    eval_returns = iter([
-        _eval_envelope({"fileInputFound": True, "fileInputCount": 1}),
-        _eval_envelope({"ok": True, "chunks": 1}),
-        _eval_envelope({"ok": True, "uploaded": 1, "expected": 1}),
-        _eval_envelope({"ok": True, "value": "短标题"}),
-        _eval_envelope({"ok": True, "length": 12}),
-        _eval_envelope({"clicked": False, "reason": "no save button found"}),
-    ])
+    eval_returns = iter(
+        [
+            _eval_envelope({"fileInputFound": True, "fileInputCount": 1}),
+            _eval_envelope({"ok": True, "chunks": 1}),
+            _eval_envelope({"ok": True, "uploaded": 1, "expected": 1}),
+            _eval_envelope({"ok": True, "value": "短标题"}),
+            _eval_envelope({"ok": True, "length": 12}),
+            _eval_envelope({"clicked": False, "reason": "no save button found"}),
+        ]
+    )
     final_url = "https://creator.xiaohongshu.com/publish/publish?target=image&draft=local"
     with (
         patch("core.browser.open_url"),
@@ -38,7 +40,9 @@ def test_create_draft_happy_path_autosave(fake_image):
         patch("core.browser.evaluate", side_effect=lambda *_a, **_k: next(eval_returns)),
         patch("time.sleep"),
     ):
-        result = bf.create_draft({"title": "短标题", "caption": "正文", "images": [str(fake_image)], "tags": ["AI"]})
+        result = bf.create_draft(
+            {"title": "短标题", "caption": "正文", "images": [str(fake_image)], "tags": ["AI"]}
+        )
     assert result["draft_url"] == final_url
     assert result["save_clicked"] is False
 
@@ -46,7 +50,9 @@ def test_create_draft_happy_path_autosave(fake_image):
 def test_create_draft_login_required(fake_image):
     with (
         patch("core.browser.open_url"),
-        patch("core.browser.get_url", return_value="https://creator.xiaohongshu.com/login?foo=secret"),
+        patch(
+            "core.browser.get_url", return_value="https://creator.xiaohongshu.com/login?foo=secret"
+        ),
         patch("time.sleep"),
     ):
         with pytest.raises(bf.BrowserFlowError) as exc:
@@ -68,11 +74,13 @@ def test_create_draft_no_image_input(fake_image):
 
 
 def test_create_draft_partial_upload_needs_review(fake_image):
-    eval_returns = iter([
-        _eval_envelope({"fileInputFound": True}),
-        _eval_envelope({"ok": True, "chunks": 1}),
-        _eval_envelope({"ok": True, "uploaded": 1, "expected": 2}),
-    ])
+    eval_returns = iter(
+        [
+            _eval_envelope({"fileInputFound": True}),
+            _eval_envelope({"ok": True, "chunks": 1}),
+            _eval_envelope({"ok": True, "uploaded": 1, "expected": 2}),
+        ]
+    )
     with (
         patch("core.browser.open_url"),
         patch("core.browser.get_url", return_value=bf.EDITOR_URL),
@@ -81,20 +89,24 @@ def test_create_draft_partial_upload_needs_review(fake_image):
         patch("time.sleep"),
     ):
         with pytest.raises(bf.BrowserFlowError) as exc:
-            bf.create_draft({"title": "t", "caption": "c", "images": [str(fake_image), str(fake_image)]})
+            bf.create_draft(
+                {"title": "t", "caption": "c", "images": [str(fake_image), str(fake_image)]}
+            )
     assert exc.value.error_code == "partial_upload_needs_review"
     assert exc.value.error_kind == "review_needed"
 
 
 def test_create_draft_save_button_failure(fake_image):
-    eval_returns = iter([
-        _eval_envelope({"fileInputFound": True}),
-        _eval_envelope({"ok": True, "chunks": 1}),
-        _eval_envelope({"ok": True, "uploaded": 1, "expected": 1}),
-        _eval_envelope({"ok": True, "value": "t"}),
-        _eval_envelope({"ok": True, "length": 1}),
-        _eval_envelope({"clicked": False, "reason": "save button disabled"}),
-    ])
+    eval_returns = iter(
+        [
+            _eval_envelope({"fileInputFound": True}),
+            _eval_envelope({"ok": True, "chunks": 1}),
+            _eval_envelope({"ok": True, "uploaded": 1, "expected": 1}),
+            _eval_envelope({"ok": True, "value": "t"}),
+            _eval_envelope({"ok": True, "length": 1}),
+            _eval_envelope({"clicked": False, "reason": "save button disabled"}),
+        ]
+    )
     with (
         patch("core.browser.open_url"),
         patch("core.browser.get_url", return_value=bf.EDITOR_URL),

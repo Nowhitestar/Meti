@@ -198,7 +198,7 @@ def compose_thread(payload: dict[str, Any]) -> dict[str, Any]:
     focus_last_add_js = (
         "(() => {"
         " const btns = document.querySelectorAll("
-        "  '[role=\"dialog\"] [data-testid=\"addButton\"]'"
+        '  \'[role="dialog"] [data-testid="addButton"]\''
         " );"
         " const btn = btns[btns.length - 1];"
         " if (!btn) return JSON.stringify({ok: false, reason: 'no_add_button'});"
