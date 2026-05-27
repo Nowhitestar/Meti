@@ -35,6 +35,8 @@ credentials.json.age
 .claude/
 # OpenClaw local workspace (skill cache, tmp, runs).
 .openclaw/
+# MCP connector local state.
+.mcp/
 # gsd / planning artifacts that might leak from agent runs.
 .planning/
 

@@ -1,4 +1,4 @@
-.PHONY: test lint typecheck unit smoke clean
+.PHONY: test lint typecheck unit smoke release-check clean
 
 PYTHON ?= python3
 
@@ -16,6 +16,9 @@ typecheck:
 
 smoke:
 	$(PYTHON) scripts/test_local.py
+
+release-check:
+	$(PYTHON) scripts/check_release.py
 
 clean:
 	rm -rf .pytest_cache .mypy_cache .ruff_cache __pycache__
