@@ -71,8 +71,6 @@ def derive_target_action(target: Any) -> str:
     existing_action = str(_target_get(target, "next_action", "") or "").lower()
     if status == "ok":
         return "none"
-    if existing_action in NEXT_ACTIONS - {"none"}:
-        return existing_action
 
     mode_actual = str(_target_get(target, "mode_actual", "") or "").lower()
     error_kind = str(_target_get(target, "error_kind", "") or "").lower()
@@ -82,14 +80,16 @@ def derive_target_action(target: Any) -> str:
 
     if error_kind == "review_needed" or mode_actual == "failed-needs-review":
         return "review"
-    if recoverable and status in {"failed", "partial", "skipped"}:
-        return "resume"
     if (
         error_kind in {"validation", "capability", "config", "credential", "credentials"}
         or error_code in {"mode_not_supported", "missing_credentials", "missing_credential"}
         or error.startswith(("validation:", "capability:", "config:", "credential:"))
     ):
         return "fix_input"
+    if existing_action in NEXT_ACTIONS - {"none"}:
+        return existing_action
+    if recoverable and status in {"failed", "partial", "skipped"}:
+        return "resume"
     if status in {"failed", "partial", "skipped"}:
         return "review"
     return "none"
