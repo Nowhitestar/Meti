@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "meti",
-      "source": ".",
+      "source": "./",
       "description": "One manifest → drafts on WeChat OA · Xiaohongshu · X Articles · X Threads · Substack · WeChat 贴图. Draft-first publishing for the Chinese-platform internet.",
       "version": "0.4.3",
       "author": {
