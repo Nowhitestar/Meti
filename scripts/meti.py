@@ -293,7 +293,9 @@ def _browser_readiness_failure(run: Any, target: Any, diag: Any) -> None:
     run.log("BROWSER_NOT_READY", target=target.name, code=diag.code)
 
 
-def _ensure_browser_ready_for_target(provider: Any, target: Any, *, auto_recover: bool) -> Any | None:
+def _ensure_browser_ready_for_target(
+    provider: Any, target: Any, *, auto_recover: bool
+) -> Any | None:
     if target.mode == "dry-run" or not getattr(provider, "browser_login_url", None):
         return None
     from core import browser as br
@@ -550,7 +552,9 @@ def cmd_resume(args: argparse.Namespace) -> int:
             if prev is not None:
                 action = derive_target_action(prev)
                 if not selected:
-                    run.log("RESUME_SKIP", target=t.name, reason="target-filter", next_action=action)
+                    run.log(
+                        "RESUME_SKIP", target=t.name, reason="target-filter", next_action=action
+                    )
                     _carry_forward_target_result(run, t, prev, action)
                     continue
                 if not should_resume_target(prev):

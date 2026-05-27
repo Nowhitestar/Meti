@@ -15,7 +15,7 @@ def _write_png(path: Path) -> None:
         ("providers.wechat_image.internal.browser_flow", 30),
     ],
 )
-def test_upload_images_batch_stages_payload_then_runs_one_browser_eval(
+def test_upload_images_batch_stages_payload_then_runs_upload_eval(
     tmp_path, monkeypatch, module_name, max_mb
 ):
     module = __import__(module_name, fromlist=["dummy"])
@@ -52,9 +52,10 @@ def test_upload_images_batch_stages_payload_then_runs_one_browser_eval(
     assert "two.png" in staged[0][0]
     assert str(max_mb) in staged[0][0] or staged[0][0]
     assert staged[0][1]["prefix"].startswith("meti-")
-    assert len(eval_calls) == 1
+    assert len(eval_calls) == 2
     assert "payload-key" in eval_calls[0]
-    assert "DataTransfer" in eval_calls[0]
+    assert "payload-key" in eval_calls[1]
+    assert "DataTransfer" in eval_calls[1]
 
 
 @pytest.mark.parametrize(
@@ -73,8 +74,15 @@ def test_upload_images_batch_rejects_partial_upload_ack(tmp_path, monkeypatch, m
 
     import core.browser as br
 
+    responses = iter(
+        [
+            {"ok": True, "chunks": 1, "expected": 1},
+            {"ok": False, "uploaded": 1, "expected": 2},
+        ]
+    )
+
     monkeypatch.setattr(br, "stage_text_payload", lambda _payload, **_kwargs: "payload-key")
-    monkeypatch.setattr(br, "evaluate", lambda _js: {"ok": False, "uploaded": 1, "expected": 2})
+    monkeypatch.setattr(br, "evaluate", lambda _js: next(responses))
 
     with pytest.raises(RuntimeError, match="batch image upload"):
         module._upload_images_batch([str(image1), str(image2)])
