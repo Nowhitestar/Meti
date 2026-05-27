@@ -4,7 +4,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-import tomllib
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
+
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent.parent
