@@ -121,6 +121,70 @@ def test_user_provider_overrides_bundled(tmp_path):
 
     p = reg.resolve("dup")
     assert p.display_name == "user-version"
+    info = next(i for i in reg.list() if i.name == "dup")
+    assert info.source == "user"
+    assert info.overrides_bundled is True
+
+
+def test_selective_trusted_user_provider_loading(tmp_path):
+    bundled = tmp_path / "bundled"
+    user = tmp_path / "user"
+    bundled.mkdir()
+    user.mkdir()
+
+    _write_provider_dir(bundled, name="bundled-only", snake="bundled_only")
+    _write_provider_dir(user, name="trusted-one", snake="trusted_one")
+    _write_provider_dir(
+        user,
+        name="untrusted-one",
+        snake="untrusted_one",
+        body="raise RuntimeError('untrusted provider imported')\n",
+    )
+
+    reg = ProviderRegistry(bundled_dir=bundled, user_dir=user)
+    reg.discover(trusted_user_providers={"trusted-one"})
+
+    names = [info.name for info in reg.list()]
+    assert "bundled-only" in names
+    assert "trusted-one" in names
+    assert "untrusted-one" not in names
+    assert reg.resolve("trusted-one").name == "trusted-one"
+
+
+def test_selective_user_provider_override_sets_info_flag(tmp_path):
+    bundled = tmp_path / "bundled"
+    user = tmp_path / "user"
+    bundled.mkdir()
+    user.mkdir()
+
+    _write_provider_dir(bundled, name="dup", snake="dup_b")
+    _write_provider_dir(
+        user,
+        name="dup",
+        snake="dup_u",
+        body=(
+            "from core.provider import Provider\n"
+            "from core.rules import PlatformRules\n"
+            "class FakeProvider(Provider):\n"
+            "    name = 'dup'\n"
+            "    display_name = 'user-version'\n"
+            "    media_types = ['longform']\n"
+            "    capabilities = {'draft': True, 'publish': False, 'schedule': False}\n"
+            "    required_credentials = []\n"
+            "    platform_rules = PlatformRules()\n"
+            "    def validate(self, m, t): return None\n"
+            "    def prepare(self, m, t, r): return None\n"
+            "    def execute(self, r, t, m, c): return None\n"
+        ),
+    )
+
+    reg = ProviderRegistry(bundled_dir=bundled, user_dir=user)
+    reg.discover(trusted_user_providers={"dup"})
+
+    info = next(i for i in reg.list() if i.name == "dup")
+    assert reg.resolve("dup").display_name == "user-version"
+    assert info.source == "user"
+    assert info.overrides_bundled is True
 
 
 def test_filter_by_media_type(tmp_path):
@@ -132,7 +196,8 @@ def test_filter_by_media_type(tmp_path):
     reg.discover()
 
     longform = reg.list(media_type="longform")
-    assert any(i.name == "lf-only" for i in longform)
+    info = next(i for i in longform if i.name == "lf-only")
+    assert info.overrides_bundled is False
 
     images = reg.list(media_type="image-post")
     assert all(i.name != "lf-only" for i in images)

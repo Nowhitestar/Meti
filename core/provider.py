@@ -16,14 +16,14 @@ from __future__ import annotations
 import importlib.util
 import sys
 from abc import ABC, abstractmethod
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from core.errors import ProviderNotFoundError
+from core.provider_metadata import ProviderManifest, discover_provider_manifests
 from core.rules import PlatformRules, Violation
 
 
@@ -90,6 +90,7 @@ class ProviderInfo:
     capabilities: dict[str, bool]
     required_credentials: list[CredentialSpec]
     source: str  # "bundled" | "user"
+    overrides_bundled: bool = False
 
 
 class Provider(ABC):
@@ -132,27 +133,38 @@ class ProviderRegistry:
         self._providers: dict[str, Provider] = {}
         self._info: dict[str, ProviderInfo] = {}
 
-    def discover(self, trust_user: bool = False) -> None:
+    def discover(
+        self,
+        trust_user: bool = False,
+        trusted_user_providers: Iterable[str] | None = None,
+    ) -> None:
         """Scan bundled and (optionally) user provider directories.
 
         ``trust_user`` is the POST-confirmation gate, not a bypass.
         Pass True only after the user has explicitly confirmed loading
         each user-installed provider (typically via SKILL.md prompt
         and a write to ``settings.toml.providers.trusted_user_providers``).
-        Tests pass True directly to exercise the override path.
+        Tests pass True directly to exercise the override path. For normal
+        settings-backed loading, pass ``trusted_user_providers`` to load only
+        user provider names present in the explicit trust whitelist.
         """
         self._providers.clear()
         self._info.clear()
-        # bundled first
-        if self._bundled_dir and self._bundled_dir.exists():
-            for d in sorted(self._bundled_dir.iterdir()):
-                if d.is_dir() and (d / "provider.yaml").exists():
-                    self._load_provider(d, source="bundled")
-        # then user (overrides if trusted)
-        if trust_user and self._user_dir and self._user_dir.exists():
-            for d in sorted(self._user_dir.iterdir()):
-                if d.is_dir() and (d / "provider.yaml").exists():
-                    self._load_provider(d, source="user")
+
+        for manifest in discover_provider_manifests(self._bundled_dir, source="bundled"):
+            self._load_provider(manifest)
+
+        if not self._user_dir:
+            return
+
+        trusted_names = (
+            {str(name) for name in trusted_user_providers}
+            if trusted_user_providers is not None
+            else None
+        )
+        for manifest in discover_provider_manifests(self._user_dir, source="user"):
+            if trust_user or (trusted_names is not None and manifest.name in trusted_names):
+                self._load_provider(manifest)
 
     def resolve(self, name: str) -> Provider:
         if name not in self._providers:
@@ -165,12 +177,9 @@ class ProviderRegistry:
             infos = [i for i in infos if media_type in i.media_types]
         return infos
 
-    def _load_provider(self, pdir: Path, source: str) -> None:
-        meta = yaml.safe_load((pdir / "provider.yaml").read_text(encoding="utf-8"))
-        name = meta["name"]
-        entry = meta["entry"]  # e.g. "provider:FakeProvider"
-        module_file, class_name = entry.split(":", 1)
-        module_path = pdir / f"{module_file}.py"
+    def _load_provider(self, manifest: ProviderManifest) -> None:
+        pdir = manifest.path
+        module_path = pdir / f"{manifest.module_name}.py"
         if not module_path.exists():
             raise FileNotFoundError(f"provider entry module not found: {module_path}")
 
@@ -183,20 +192,22 @@ class ProviderRegistry:
         module = importlib.util.module_from_spec(spec)
         sys.modules[mod_name] = module
         spec.loader.exec_module(module)
-        cls = getattr(module, class_name)
+        cls = getattr(module, manifest.class_name)
         instance = cls()
 
-        creds = [CredentialSpec(**c) for c in (meta.get("required_credentials") or [])]
+        overrides_bundled = manifest.source == "user" and manifest.name in self._providers
+        creds = [CredentialSpec(**c) for c in manifest.required_credentials]
         info = ProviderInfo(
-            name=name,
-            display_name=meta.get("display_name", name),
-            media_types=list(meta.get("media_types") or []),
-            capabilities=dict(meta.get("capabilities") or {}),
+            name=manifest.name,
+            display_name=manifest.display_name,
+            media_types=manifest.media_types,
+            capabilities=manifest.capabilities,
             required_credentials=creds,
-            source=source,
+            source=manifest.source,
+            overrides_bundled=overrides_bundled,
         )
-        self._providers[name] = instance
-        self._info[name] = info
+        self._providers[manifest.name] = instance
+        self._info[manifest.name] = info
 
 
 def _default_bundled_dir() -> Path:
