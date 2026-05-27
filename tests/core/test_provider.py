@@ -244,6 +244,7 @@ def test_bundled_provider_metadata_matches_provider_classes():
     assert reg.list()
     for info in reg.list():
         provider = reg.resolve(info.name)
+        assert info.name == provider.name
         assert info.display_name == provider.display_name
         assert info.media_types == provider.media_types
         assert info.capabilities == provider.capabilities
