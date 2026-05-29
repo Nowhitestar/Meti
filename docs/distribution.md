@@ -46,6 +46,37 @@ python3 -m venv .venv
 Use a virtualenv by default. It keeps runtime dependencies such as `pyrage` and
 `tomli_w` isolated from system Python package-management rules.
 
+## Versioned release install
+
+Versioned installs use GitHub Release artifacts. Default updates target the
+latest stable release; use `--version vX.Y.Z` for pinning, rollback, or a
+controlled rollout.
+
+```bash
+# latest stable
+scripts/install.sh --latest --target ~/.openclaw/skills/meti
+
+# explicit version
+scripts/install.sh --version vX.Y.Z --target ~/.openclaw/skills/meti --yes
+```
+
+The installer downloads the versioned release asset, `release.json`, and
+`SHA256SUMS` from GitHub Releases, verifies the selected artifact checksum, and
+replaces only the install target files. It does not delete `~/.config/meti`,
+`~/.config/meti/credentials.json.age`, or `~/.config/meti/age-key.txt`.
+
+Existing installs can use the CLI wrapper:
+
+```bash
+meti update --latest
+meti update --version vX.Y.Z
+meti update --version vX.Y.Z --yes
+```
+
+Without `--yes`, `meti update` prints the current version, target version,
+install path, planned `scripts/install.sh` command, and preserved config paths
+before asking for confirmation.
+
 ## Prefer reinstall
 
 For existing Claude Code plugin or OpenClaw skill installs, Prefer reinstall
@@ -95,11 +126,23 @@ marketplace submission material:
 python scripts/check_release.py
 ```
 
-The release gate is draft-safe and account-free by default. It checks version
-synchronization, plugin and marketplace metadata, tracked private paths,
-generated wheel contents, install docs, and the no-network smoke flow. It does
-not create live platform drafts, open a browser, read real credentials, submit
-marketplace data, or publish anything publicly.
+The release gate is draft-safe and account-free by default. It checks
+`release.json` version synchronization, plugin and marketplace metadata, tracked
+private paths, generated wheel/release bundle contents, install docs, and the
+no-network smoke flow. It does not create live platform drafts, open a browser,
+read real credentials, submit marketplace data, or publish anything publicly.
+
+Release maintainers build and publish with dry-run-first commands:
+
+```bash
+python scripts/release.py prepare --version X.Y.Z --dry-run
+python scripts/release.py build --dry-run
+python scripts/release.py publish --version X.Y.Z --dry-run
+```
+
+Confirmed publish creates the `vX.Y.Z` tag and published GitHub Release only
+after the maintainer approves the printed target version, artifact list,
+checksums, and `gh release create` command.
 
 ## Private artifacts
 

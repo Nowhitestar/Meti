@@ -57,7 +57,7 @@ dev = [
 # See docs/browser-connectors.md for details.
 
 [tool.setuptools.packages.find]
-include = ["core*", "providers*"]
+include = ["core*", "providers*", "scripts*"]
 
 [tool.ruff]
 line-length = 100

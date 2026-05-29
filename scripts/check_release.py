@@ -10,6 +10,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -23,6 +24,7 @@ except ModuleNotFoundError:  # pragma: no cover - Python 3.10 fallback.
 
 
 VERSION_FILES = {
+    "release": Path("release.json"),
     "pyproject": Path("pyproject.toml"),
     "skill": Path("SKILL.md"),
     "plugin": Path(".claude-plugin/plugin.json"),
@@ -54,6 +56,7 @@ DENIED_EXACT_PATHS = {
 DENIED_PATH_PATTERNS = (
     ".env",
     ".env.*",
+    ".DS_Store",
     "*.age",
     "*.local.md",
     "*.pyc",
@@ -61,6 +64,7 @@ DENIED_PATH_PATTERNS = (
 )
 
 REQUIRED_GITIGNORE_ENTRIES = (
+    "dist/",
     "runs/",
     ".env",
     ".env.*",
@@ -116,15 +120,22 @@ DOCS_REQUIRED_STRINGS = {
     "README.md": (
         "Claude Code marketplace submission is pending",
         "/plugin install meti",
+        "meti update --version vX.Y.Z",
     ),
     "CONTRIBUTING.md": (
         "Prefer reinstall",
         "python scripts/check_release.py",
+        "release.json",
+        "scripts/release.py",
+        "meti update --version vX.Y.Z",
     ),
     "docs/distribution.md": (
         "git clone https://github.com/Nowhitestar/meti.git ~/.openclaw/skills/meti",
         "Prefer reinstall",
         "python scripts/check_release.py",
+        "scripts/install.sh --version vX.Y.Z",
+        "meti update --version vX.Y.Z",
+        "~/.config/meti/credentials.json.age",
     ),
     "docs/marketplace-submission.md": (
         "Short description",
@@ -197,6 +208,7 @@ def load_versions(project_root: Path) -> dict[str, str]:
     """Load all public distribution version surfaces."""
 
     root = project_root.resolve()
+    release = _read_json(root / VERSION_FILES["release"])
     pyproject = tomllib.loads((root / VERSION_FILES["pyproject"]).read_text(encoding="utf-8"))
     plugin = _read_json(root / VERSION_FILES["plugin"])
     marketplace = _read_json(root / VERSION_FILES["marketplace"])
@@ -205,6 +217,7 @@ def load_versions(project_root: Path) -> dict[str, str]:
     except (KeyError, IndexError, TypeError) as exc:
         raise ValueError(".claude-plugin/marketplace.json plugins[0].version missing") from exc
     return {
+        "release": str(release["version"]),
         "pyproject": str(pyproject["project"]["version"]),
         "skill": _skill_frontmatter_version(root / VERSION_FILES["skill"]),
         "plugin": str(plugin["version"]),
@@ -218,17 +231,17 @@ def check_version_sync(project_root: Path) -> CheckResult:
     except Exception as exc:
         return CheckResult("version-sync", False, str(exc))
 
-    canonical = versions["pyproject"]
+    canonical = versions["release"]
     drift = [
         f"{VERSION_FILES[name]}={version}"
         for name, version in versions.items()
-        if version != canonical
+        if name != "release" and version != canonical
     ]
     if drift:
         return CheckResult(
             "version-sync",
             False,
-            f"pyproject.toml={canonical}; drift: {', '.join(drift)}",
+            f"release.json={canonical}; drift: {', '.join(drift)}",
         )
     surfaces = ", ".join(f"{name}={version}" for name, version in versions.items())
     return CheckResult("version-sync", True, surfaces)
@@ -406,7 +419,9 @@ def _python_can_build(candidate: Path) -> bool:
 def _build_python_candidates() -> list[Path]:
     candidates: list[Path] = [Path(sys.executable)]
     for raw in (
+        shutil.which("python"),
         shutil.which("python3"),
+        "/opt/anaconda3/bin/python",
         "/opt/homebrew/opt/python@3.12/bin/python3.12",
         "/opt/homebrew/opt/python@3.11/bin/python3.11",
         "/opt/homebrew/opt/python@3.10/bin/python3.10",
@@ -425,6 +440,33 @@ def _build_python_candidates() -> list[Path]:
         seen.add(key)
         unique.append(candidate)
     return unique
+
+
+def _python_can_smoke(candidate: Path) -> bool:
+    proc = subprocess.run(
+        [
+            str(candidate),
+            "-c",
+            (
+                "import importlib.util, sys; "
+                "ok = sys.version_info >= (3, 10) "
+                "and importlib.util.find_spec('yaml') "
+                "and importlib.util.find_spec('pyrage'); "
+                "raise SystemExit(0 if ok else 1)"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return proc.returncode == 0
+
+
+def _smoke_python() -> Path | None:
+    for candidate in _build_python_candidates():
+        if _python_can_smoke(candidate):
+            return candidate
+    return None
 
 
 def build_wheel(project_root: Path, wheel_dir: Path) -> Path:
@@ -476,9 +518,52 @@ def scan_archive_members(members: list[str]) -> list[str]:
     return denied_paths(members)
 
 
+def archive_member_names(archive_path: Path) -> list[str]:
+    """Read member names from supported release archives."""
+
+    name = archive_path.name
+    if name.endswith((".whl", ".zip")):
+        with zipfile.ZipFile(archive_path) as archive:
+            return archive.namelist()
+    if name.endswith((".tar.gz", ".tgz")):
+        with tarfile.open(archive_path, "r:gz") as archive:
+            return archive.getnames()
+    return []
+
+
+def scan_archive_path(archive_path: Path) -> list[str]:
+    return scan_archive_members(archive_member_names(archive_path))
+
+
 def scan_wheel_for_private_paths(wheel_path: Path) -> list[str]:
+    return scan_archive_path(wheel_path)
+
+
+def wheel_has_console_script_target(wheel_path: Path) -> bool:
     with zipfile.ZipFile(wheel_path) as archive:
-        return scan_archive_members(archive.namelist())
+        return "scripts/meti.py" in archive.namelist()
+
+
+def scan_release_bundle_for_private_paths(bundle_dir: Path) -> dict[str, list[str]]:
+    """Scan every release bundle artifact for denied paths."""
+
+    denied_by_artifact: dict[str, list[str]] = {}
+    if not bundle_dir.exists():
+        return denied_by_artifact
+
+    for path in sorted(bundle_dir.iterdir()):
+        if path.name == "SHA256SUMS":
+            continue
+        if path.is_dir():
+            continue
+        denied: list[str]
+        if path.name.endswith((".whl", ".zip", ".tar.gz", ".tgz")):
+            denied = scan_archive_path(path)
+        else:
+            denied = [path.name] if path_is_denied(path.name) else []
+        if denied:
+            denied_by_artifact[path.name] = denied
+    return denied_by_artifact
 
 
 def check_artifact_hygiene(project_root: Path) -> CheckResult:
@@ -486,11 +571,30 @@ def check_artifact_hygiene(project_root: Path) -> CheckResult:
         with tempfile.TemporaryDirectory(prefix="meti-release-wheel-") as tmp:
             wheel = build_wheel(project_root, Path(tmp))
             denied = scan_wheel_for_private_paths(wheel)
+            has_console_target = wheel_has_console_script_target(wheel)
     except Exception as exc:
         return CheckResult("artifacts", False, str(exc))
     if denied:
         return CheckResult("artifacts", False, f"wheel includes private paths: {', '.join(denied)}")
-    return CheckResult("artifacts", True, "wheel artifact private-path scan ok")
+    if not has_console_target:
+        return CheckResult("artifacts", False, "wheel missing scripts/meti.py console target")
+
+    release_root = project_root / "dist" / "releases"
+    bundle_failures: dict[str, list[str]] = {}
+    if release_root.exists():
+        for bundle_dir in sorted(path for path in release_root.iterdir() if path.is_dir()):
+            for artifact, paths in scan_release_bundle_for_private_paths(bundle_dir).items():
+                bundle_failures[f"{bundle_dir.name}/{artifact}"] = paths
+    if bundle_failures:
+        details = "; ".join(
+            f"{artifact}: {', '.join(paths)}" for artifact, paths in bundle_failures.items()
+        )
+        return CheckResult("artifacts", False, f"release bundle includes private paths: {details}")
+    return CheckResult(
+        "artifacts",
+        True,
+        "wheel and release bundle artifact private-path scans ok",
+    )
 
 
 def check_docs_install(project_root: Path) -> CheckResult:
@@ -513,6 +617,9 @@ def check_smoke(project_root: Path) -> CheckResult:
     script = project_root / "scripts" / "test_local.py"
     if not script.exists():
         return CheckResult("smoke", False, "scripts/test_local.py missing")
+    python = _smoke_python()
+    if python is None:
+        return CheckResult("smoke", False, "no local Python has yaml and pyrage installed")
     try:
         with tempfile.TemporaryDirectory(prefix="meti-release-smoke-") as tmp:
             tmp_path = Path(tmp)
@@ -521,11 +628,10 @@ def check_smoke(project_root: Path) -> CheckResult:
                 {
                     "METI_RUNS_DIR": str(tmp_path / "runs"),
                     "XDG_CONFIG_HOME": str(tmp_path / "xdg"),
-                    "HOME": str(tmp_path / "home"),
                 }
             )
             proc = subprocess.run(
-                [sys.executable, str(script)],
+                [str(python), str(script)],
                 cwd=project_root,
                 env=env,
                 capture_output=True,
