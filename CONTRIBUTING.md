@@ -78,11 +78,23 @@ create live platform drafts, open a browser, read real credentials, or submit
 marketplace data.
 
 `release.json` is the canonical publication source for versioned releases.
-Use the semi-automatic release workflow so Python package metadata, SKILL
-frontmatter, plugin metadata, marketplace metadata, artifacts, changelog, tag,
-and GitHub Release stay in sync:
+Normal releases are created by CI from `main` after the full test matrix passes.
+CI updates Python package metadata, SKILL frontmatter, plugin metadata,
+marketplace metadata, artifacts, changelog, tag, and GitHub Release together.
+
+Release selection is intentionally conservative:
+
+- `feat(scope): ...` or `perf(scope): ...` creates a minor release.
+- `feat(scope)!: ...` or a `BREAKING CHANGE:` footer creates a major release.
+- `release: patch`, `release: minor`, or `release: major` in the commit body
+  can force a release when the Conventional Commit type is not enough.
+- Routine `fix:`, `docs:`, `test:`, `chore:`, `ci:`, and `refactor:` commits do
+  not publish by default.
+
+Use the local dry-run commands only when reviewing or recovering a release:
 
 ```bash
+python scripts/plan_release.py
 python scripts/release.py prepare --version X.Y.Z --dry-run
 python scripts/release.py build --dry-run
 python scripts/release.py publish --version X.Y.Z --dry-run
@@ -134,10 +146,10 @@ platform artifacts in tracked files.
 
 ## Commits, PRs, releases
 
-- **Commit messages**: imperative present tense, scope-prefixed when it helps (`feat(substack):`, `fix(wechat-image):`, `docs:`, `refactor(browser):`). The recent git log is a good style reference.
+- **Commit messages**: imperative present tense, scope-prefixed when it helps (`feat(substack):`, `fix(wechat-image):`, `docs:`, `refactor(browser):`). CI uses `feat`, `perf`, `!`, `BREAKING CHANGE:`, and `release:*` markers to decide whether to publish a release, so reserve those signals for important user-visible changes.
 - **PRs** target `main`. Squash-merge by default. PR description should answer: what, why, how-verified.
 - **Tests required** for any code change. New providers ship with both unit tests and a real-account verification note.
-- **Releases**: maintainers publish `vMAJOR.MINOR.PATCH` from `main` after CI green and `python scripts/check_release.py` passes; the `release.json` bump lands in the same PR as the user-visible feature.
+- **Releases**: CI publishes `vMAJOR.MINOR.PATCH` from `main` after CI green and `python scripts/check_release.py` passes. The `release.json` bump lands in the CI-created release commit.
 
 ### Prefer reinstall
 

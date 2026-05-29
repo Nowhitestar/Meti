@@ -132,17 +132,53 @@ private paths, generated wheel/release bundle contents, install docs, and the
 no-network smoke flow. It does not create live platform drafts, open a browser,
 read real credentials, submit marketplace data, or publish anything publicly.
 
-Release maintainers build and publish with dry-run-first commands:
+## Automated release policy
+
+CI owns normal releases from `main`. After the full macOS + Ubuntu test matrix
+passes, the release job inspects commits since the latest `vX.Y.Z` tag and
+publishes only when there is a release-worthy signal.
+
+Automatic release signals:
+
+- `feat(scope): ...` or `perf(scope): ...` creates a minor release.
+- `feat(scope)!: ...` or a `BREAKING CHANGE:` footer creates a major release.
+- `release: patch`, `release: minor`, or `release: major` in the commit body
+  overrides the automatic choice.
+
+Routine `fix:`, `docs:`, `test:`, `chore:`, `ci:`, and `refactor:` commits do
+not publish a release by default. This keeps the release stream focused on
+important user-visible changes instead of every small maintenance update.
+
+When a release is selected, CI runs:
 
 ```bash
+python scripts/plan_release.py --github-output
+python scripts/release.py prepare --version X.Y.Z
+python scripts/check_release.py
+python scripts/release.py build
+```
+
+Then CI commits the synchronized version files, atomically pushes `main` and
+`vX.Y.Z`, and creates the GitHub Release with the generated artifacts from
+`dist/releases/vX.Y.Z/`.
+
+Manual override is available from the CI workflow dispatch UI for exceptional
+cases: choose `patch`, `minor`, or `major`, or provide an exact `X.Y.Z` version.
+Use this sparingly; the default path should be normal commits to `main`.
+
+Release maintainers can still inspect the same flow locally with dry-run-first
+commands:
+
+```bash
+python scripts/plan_release.py
 python scripts/release.py prepare --version X.Y.Z --dry-run
 python scripts/release.py build --dry-run
 python scripts/release.py publish --version X.Y.Z --dry-run
 ```
 
-Confirmed publish creates the `vX.Y.Z` tag and published GitHub Release only
+Manual local publish creates the `vX.Y.Z` tag and published GitHub Release only
 after the maintainer approves the printed target version, artifact list,
-checksums, and `gh release create` command.
+checksums, and `gh release create` command. Prefer CI for routine releases.
 
 ## Private artifacts
 
