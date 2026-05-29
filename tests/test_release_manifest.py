@@ -59,7 +59,9 @@ def test_release_manifest_requires_strict_stable_artifact_contract(tmp_path: Pat
     assert any("wheel" in error for error in errors)
 
 
-def test_prepare_dry_run_reports_all_public_version_surfaces(capsys: pytest.CaptureFixture[str]) -> None:
+def test_prepare_dry_run_reports_all_public_version_surfaces(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     release_script = load_release_script()
     before = (ROOT / "release.json").read_text(encoding="utf-8")
 
@@ -115,7 +117,9 @@ def test_release_script_rejects_invalid_stable_versions() -> None:
         release_script.validate_target_version("0.4.4-dev", {"channel": "stable"})
 
 
-def test_publish_commands_use_subprocess_run(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_publish_commands_use_subprocess_run(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     release_script = load_release_script()
     artifacts = [
         tmp_path / "meti-0.4.3-py3-none-any.whl",
@@ -132,7 +136,9 @@ def test_publish_commands_use_subprocess_run(monkeypatch: pytest.MonkeyPatch, tm
 
     monkeypatch.setattr(release_script.subprocess, "run", record_run)
 
-    release_script.run_commands(release_script.publish_commands("v0.4.3", artifacts), cwd=ROOT, dry_run=False)
+    release_script.run_commands(
+        release_script.publish_commands("v0.4.3", artifacts), cwd=ROOT, dry_run=False
+    )
 
     assert calls[0] == ["git", "tag", "v0.4.3"]
     assert calls[1][:4] == ["gh", "release", "create", "v0.4.3"]

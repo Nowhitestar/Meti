@@ -170,7 +170,10 @@ def _move_unreleased_to_version(text: str, version: str) -> str:
     marker = "## Unreleased"
     start = text.find(marker)
     if start == -1:
-        return text.rstrip() + f"\n\n## {version} - {dt.date.today().isoformat()}\n\n- Release prepared.\n"
+        return (
+            text.rstrip()
+            + f"\n\n## {version} - {dt.date.today().isoformat()}\n\n- Release prepared.\n"
+        )
     body_start = start + len(marker)
     next_heading = text.find("\n## ", body_start)
     if next_heading == -1:
@@ -234,12 +237,16 @@ def prepare_release(project_root: Path, version: str, *, dry_run: bool = False) 
     )
 
     skill = project_root / "SKILL.md"
-    skill.write_text(_replace_skill_version(skill.read_text(encoding="utf-8"), version), encoding="utf-8")
+    skill.write_text(
+        _replace_skill_version(skill.read_text(encoding="utf-8"), version), encoding="utf-8"
+    )
 
     plugin_path = project_root / ".claude-plugin" / "plugin.json"
     plugin = json.loads(plugin_path.read_text(encoding="utf-8"))
     plugin["version"] = version
-    plugin_path.write_text(json.dumps(plugin, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    plugin_path.write_text(
+        json.dumps(plugin, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
 
     marketplace_path = project_root / ".claude-plugin" / "marketplace.json"
     marketplace = json.loads(marketplace_path.read_text(encoding="utf-8"))
@@ -431,12 +438,18 @@ def build_parser() -> argparse.ArgumentParser:
     build.add_argument("--dry-run", action="store_true", help="Print planned artifacts only.")
     build.set_defaults(func=cmd_build)
     prepare = subparsers.add_parser("prepare", help="Prepare a version bump.")
-    prepare.add_argument("--version", required=True, help="Strict SemVer target version, e.g. 0.4.4.")
+    prepare.add_argument(
+        "--version", required=True, help="Strict SemVer target version, e.g. 0.4.4."
+    )
     prepare.add_argument("--dry-run", action="store_true", help="Print intended updates only.")
     prepare.set_defaults(func=cmd_prepare)
     publish = subparsers.add_parser("publish", help="Publish a confirmed GitHub Release.")
-    publish.add_argument("--version", required=True, help="Strict SemVer target version, e.g. 0.4.4.")
-    publish.add_argument("--dry-run", action="store_true", help="Print intended release actions only.")
+    publish.add_argument(
+        "--version", required=True, help="Strict SemVer target version, e.g. 0.4.4."
+    )
+    publish.add_argument(
+        "--dry-run", action="store_true", help="Print intended release actions only."
+    )
     publish.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
     publish.set_defaults(func=cmd_publish)
     return parser
