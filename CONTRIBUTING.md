@@ -77,6 +77,22 @@ no-network smoke flow. It is draft-safe and account-free by default: it does not
 create live platform drafts, open a browser, read real credentials, or submit
 marketplace data.
 
+`release.json` is the canonical publication source for versioned releases.
+Use the semi-automatic release workflow so Python package metadata, SKILL
+frontmatter, plugin metadata, marketplace metadata, artifacts, changelog, tag,
+and GitHub Release stay in sync:
+
+```bash
+python scripts/release.py prepare --version X.Y.Z --dry-run
+python scripts/release.py build --dry-run
+python scripts/release.py publish --version X.Y.Z --dry-run
+```
+
+After reviewing the dry-run output, run the same commands without `--dry-run`.
+`publish` prints the target version, tag, artifact paths, `SHA256SUMS`, and
+`gh release create` command before confirmation. Use `--yes` only in CI or an
+already-reviewed scripted release.
+
 ## What kind of changes are most welcome
 
 In rough priority order:
@@ -121,7 +137,7 @@ platform artifacts in tracked files.
 - **Commit messages**: imperative present tense, scope-prefixed when it helps (`feat(substack):`, `fix(wechat-image):`, `docs:`, `refactor(browser):`). The recent git log is a good style reference.
 - **PRs** target `main`. Squash-merge by default. PR description should answer: what, why, how-verified.
 - **Tests required** for any code change. New providers ship with both unit tests and a real-account verification note.
-- **Releases**: maintainers tag `vMAJOR.MINOR.PATCH` on `main` after CI green and `python scripts/check_release.py` passes; `pyproject.toml` version bump lands in the same PR as the user-visible feature.
+- **Releases**: maintainers publish `vMAJOR.MINOR.PATCH` from `main` after CI green and `python scripts/check_release.py` passes; the `release.json` bump lands in the same PR as the user-visible feature.
 
 ### Prefer reinstall
 
@@ -134,6 +150,19 @@ only; do not delete `~/.config/meti`, `~/.config/meti/credentials.json.age`, or
 
 Host-native update commands such as `git pull` are acceptable only when the
 local install path is known, clean, and verified.
+
+For versioned installs, prefer:
+
+```bash
+scripts/install.sh --latest --target ~/.openclaw/skills/meti
+scripts/install.sh --version vX.Y.Z --target ~/.openclaw/skills/meti --yes
+meti update --latest
+meti update --version vX.Y.Z
+```
+
+`meti update` confirms interactively by default; `--yes` is for CI or reviewed
+automation. Normal reinstall/update preserves `~/.config/meti`,
+`~/.config/meti/credentials.json.age`, and `~/.config/meti/age-key.txt`.
 
 ## Reporting bugs
 

@@ -60,6 +60,23 @@ The Claude Code marketplace submission is pending. Once Meti is listed, the inst
 git clone https://github.com/Nowhitestar/meti.git ~/.openclaw/skills/meti
 ```
 
+**Versioned release install / update**
+
+```bash
+# latest stable from GitHub Releases
+scripts/install.sh --latest --target ~/.openclaw/skills/meti
+
+# pinned install or rollback
+scripts/install.sh --version vX.Y.Z --target ~/.openclaw/skills/meti --yes
+
+# from an existing checkout/install
+meti update --latest
+meti update --version vX.Y.Z
+```
+
+Normal reinstall/update preserves `~/.config/meti`,
+`~/.config/meti/credentials.json.age`, and `~/.config/meti/age-key.txt`.
+
 **Direct CLI** (Python ≥ 3.10)
 
 ```bash

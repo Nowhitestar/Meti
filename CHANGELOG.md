@@ -9,6 +9,10 @@ All notable changes to Meti are documented here. Versions follow [Semantic Versi
 - Release readiness gate: `python scripts/check_release.py` validates version
   synchronization, plugin/marketplace metadata, private-path hygiene, wheel
   artifact contents, distribution docs, and no-network smoke behavior.
+- Versioned release workflow: `release.json`, `scripts/release.py`, complete
+  GitHub Release artifacts, `scripts/install.sh`, and `meti update` support
+  latest stable or explicit `--version vX.Y.Z` installs with `--yes` for
+  reviewed automation.
 - Distribution docs for Claude Code local plugin install, future marketplace
   install, OpenClaw skill install, and reinstall-first upgrade guidance.
 - Marketplace submission packet covering descriptions, tags, install notes,

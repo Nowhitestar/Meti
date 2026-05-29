@@ -8,12 +8,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
+
+VERSION_TAG_RE = re.compile(r"^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$")
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -60,6 +64,13 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="For browser-backed drafts, attempt one bounded bind/open/retry readiness recovery.",
     )
+
+    sub_update = sub.add_parser("update", help="Update this Meti install from GitHub Releases")
+    target = sub_update.add_mutually_exclusive_group()
+    target.add_argument("--version", help="Install an explicit version, e.g. v0.4.3")
+    target.add_argument("--latest", action="store_true", help="Install the latest stable release")
+    sub_update.add_argument("--yes", action="store_true", help="Skip confirmation")
+    sub_update.add_argument("--dry-run", action="store_true", help="Print the plan only")
 
     sub.add_parser("doctor", help="Self-check: vault, providers, health")
 
@@ -661,6 +672,55 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0
 
 
+def _update_target_label(args: argparse.Namespace) -> str:
+    if args.version:
+        return args.version
+    return "latest stable"
+
+
+def _installer_command(args: argparse.Namespace, *, display: bool = False) -> list[str]:
+    installer = "scripts/install.sh" if display else str(ROOT / "scripts" / "install.sh")
+    command = [installer, "--target", str(ROOT)]
+    if args.version:
+        command.extend(["--version", args.version])
+    else:
+        command.append("--latest")
+    if args.yes:
+        command.append("--yes")
+    if args.dry_run:
+        command.append("--dry-run")
+    return command
+
+
+def cmd_update(args: argparse.Namespace) -> int:
+    from core import __version__
+
+    if args.version and not VERSION_TAG_RE.match(args.version):
+        print(f"ERROR  --version must be vX.Y.Z, got: {args.version}", file=sys.stderr)
+        return 2
+
+    display_command = _installer_command(args, display=True)
+    command = _installer_command(args)
+    print(f"current version: {__version__}")
+    print(f"target version: {_update_target_label(args)}")
+    print(f"install path: {ROOT}")
+    print(
+        "preserve user config: ~/.config/meti, "
+        "~/.config/meti/credentials.json.age, ~/.config/meti/age-key.txt"
+    )
+    print("installer command: " + " ".join(display_command))
+    if args.dry_run:
+        print("dry-run: no files will be modified")
+        return 0
+    if not args.yes:
+        answer = input("Run installer now? Type 'yes' to continue: ")
+        if answer != "yes":
+            print("Update cancelled.")
+            return 1
+    proc = subprocess.run(command, check=False)
+    return proc.returncode
+
+
 def cmd_wizard(args: argparse.Namespace) -> int:
     if args.dump_context:
         from core.wizard.context import build_context
@@ -793,6 +853,7 @@ _DISPATCH = {
     "list": cmd_list,
     "providers": cmd_providers,
     "resume": cmd_resume,
+    "update": cmd_update,
     "doctor": cmd_doctor,
     "wizard": cmd_wizard,
     "browser": cmd_browser,

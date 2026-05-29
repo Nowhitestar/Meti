@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
+dist/
 .coverage
 .pytest_cache/
 .mypy_cache/

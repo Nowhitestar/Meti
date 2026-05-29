@@ -1,0 +1,38 @@
+{
+  "version": "0.4.3",
+  "tag": "v0.4.3",
+  "channel": "stable",
+  "semver_policy": "strict",
+  "compatibility": {
+    "python": ">=3.10",
+    "cli": ">=0.4.3 <1.0.0",
+    "claude-plugin": ">=0.4.3 <1.0.0",
+    "openclaw-skill": ">=0.4.3 <1.0.0"
+  },
+  "artifacts": [
+    {
+      "kind": "wheel",
+      "filename": "meti-0.4.3-py3-none-any.whl"
+    },
+    {
+      "kind": "sdist",
+      "filename": "meti-0.4.3.tar.gz"
+    },
+    {
+      "kind": "claude-plugin-zip",
+      "filename": "meti-claude-plugin-v0.4.3.zip"
+    },
+    {
+      "kind": "openclaw-skill-zip",
+      "filename": "meti-openclaw-skill-v0.4.3.zip"
+    },
+    {
+      "kind": "checksums",
+      "filename": "SHA256SUMS"
+    },
+    {
+      "kind": "release-manifest",
+      "filename": "release.json"
+    }
+  ]
+}
