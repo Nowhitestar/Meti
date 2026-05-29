@@ -1,6 +1,6 @@
 [project]
 name = "meti"
-version = "0.5.1"
+version = "0.6.0"
 description = "One manifest, every Chinese-platform you publish to."
 readme = "README.md"
 license = {text = "MIT"}

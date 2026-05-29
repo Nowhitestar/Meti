@@ -11,7 +11,7 @@
       "name": "meti",
       "source": "./",
       "description": "One manifest → drafts on WeChat OA · Xiaohongshu · X Articles · X Threads · Substack · WeChat 贴图. Draft-first publishing for the Chinese-platform internet.",
-      "version": "0.5.1",
+      "version": "0.6.0",
       "author": {
         "name": "Lewis Liao",
         "url": "https://liao.uno"
