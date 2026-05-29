@@ -5,6 +5,24 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Force a release bump
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - patch
+          - minor
+          - major
+      version:
+        description: Exact release version, e.g. 0.6.0
+        required: false
+
+permissions:
+  contents: read
 
 jobs:
   test:
@@ -48,3 +66,82 @@ jobs:
           # job-local dir (the smoke script also overrides XDG_CONFIG_HOME).
           HOME: ${{ runner.temp }}
         run: python scripts/test_local.py
+
+  release:
+    name: Release
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    permissions:
+      contents: write
+    concurrency:
+      group: meti-release-main
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Plan release
+        id: plan
+        env:
+          RELEASE_BUMP: ${{ github.event_name == 'workflow_dispatch' && inputs.release || 'auto' }}
+          RELEASE_VERSION: ${{ github.event_name == 'workflow_dispatch' && inputs.version || '' }}
+        run: |
+          python scripts/plan_release.py \
+            --force-bump "$RELEASE_BUMP" \
+            --version "$RELEASE_VERSION" \
+            --github-output
+
+      - name: Show release decision
+        run: |
+          echo "should_release=${{ steps.plan.outputs.should_release }}"
+          echo "version=${{ steps.plan.outputs.version }}"
+          echo "reason=${{ steps.plan.outputs.reason }}"
+
+      - name: Prepare release version
+        if: steps.plan.outputs.should_release == 'true'
+        run: python scripts/release.py prepare --version "${{ steps.plan.outputs.version }}"
+
+      - name: Commit release version
+        if: steps.plan.outputs.should_release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add release.json pyproject.toml SKILL.md .claude-plugin/plugin.json .claude-plugin/marketplace.json CHANGELOG.md
+          git commit -m "chore(release): prepare ${{ steps.plan.outputs.version }}"
+
+      - name: Verify and build release
+        if: steps.plan.outputs.should_release == 'true'
+        run: |
+          python scripts/check_release.py
+          python scripts/release.py build
+
+      - name: Push release commit and tag
+        if: steps.plan.outputs.should_release == 'true'
+        run: |
+          git tag "${{ steps.plan.outputs.tag }}"
+          git push --atomic origin HEAD:main "${{ steps.plan.outputs.tag }}"
+
+      - name: Publish GitHub Release
+        if: steps.plan.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.plan.outputs.tag }}" \
+            dist/releases/${{ steps.plan.outputs.tag }}/* \
+            --title "${{ steps.plan.outputs.tag }}" \
+            --notes-file CHANGELOG.md
