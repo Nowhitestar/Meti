@@ -100,6 +100,7 @@ def test_publish_dry_run_reports_gate_artifacts_and_release_commands(
     assert exit_code == 0
     assert "python3 scripts/check_release.py" in out
     assert "meti-claude-plugin-v0.4.3.zip" in out
+    assert "meti-openclaw-skill-v0.4.3.zip" in out
     assert "SHA256SUMS" in out
     assert "git tag v0.4.3" in out
     assert "gh release create v0.4.3" in out

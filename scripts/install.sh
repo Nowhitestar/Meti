@@ -87,11 +87,11 @@ if [ "$LATEST" -eq 1 ]; then
   if [ "$DRY_RUN" -eq 1 ]; then
     TARGET_VERSION="latest stable"
     RELEASE_URL="https://github.com/${REPO}/releases/latest/download"
-    ASSET="meti-openclaw-skill-vX.Y.Z.zip"
+    ASSET="meti-claude-plugin-vX.Y.Z.zip"
   else
     TARGET_VERSION="$(resolve_latest)"
     RELEASE_URL="https://github.com/${REPO}/releases/download/${TARGET_VERSION}"
-    ASSET="meti-openclaw-skill-${TARGET_VERSION}.zip"
+    ASSET="meti-claude-plugin-${TARGET_VERSION}.zip"
   fi
 else
   TARGET_VERSION="$VERSION"
@@ -100,7 +100,7 @@ else
     exit 2
   fi
   RELEASE_URL="https://github.com/${REPO}/releases/download/${TARGET_VERSION}"
-  ASSET="meti-openclaw-skill-${TARGET_VERSION}.zip"
+  ASSET="meti-claude-plugin-${TARGET_VERSION}.zip"
 fi
 
 echo "Meti installer"
@@ -139,7 +139,7 @@ mkdir -p "$STAGING"
 unzip -q "$ASSET" -d "$STAGING"
 
 mkdir -p "$TARGET"
-for item in core providers scripts docs examples .claude-plugin SKILL.md README.md CHANGELOG.md release.json; do
+for item in assets core providers scripts docs examples .claude-plugin pyproject.toml SKILL.md README.md CHANGELOG.md CONTRIBUTING.md CODE_OF_CONDUCT.md LICENSE release.json; do
   rm -rf "${TARGET:?}/${item}"
   if [ -e "${STAGING}/${item}" ]; then
     cp -R "${STAGING}/${item}" "${TARGET}/${item}"

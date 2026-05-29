@@ -24,6 +24,7 @@ from core.release import load_release_manifest, validate_release_manifest  # noq
 from scripts import check_release  # noqa: E402
 
 SOURCE_DIRS = (
+    "assets",
     "core",
     "providers",
     "scripts",
@@ -37,6 +38,8 @@ SOURCE_FILES = (
     "SKILL.md",
     "CHANGELOG.md",
     "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "LICENSE",
     "release.json",
 )
 CLAUDE_PLUGIN_FILES = SOURCE_FILES

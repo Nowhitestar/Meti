@@ -76,6 +76,7 @@ def test_install_script_help_and_dry_run(tmp_path: Path) -> None:
 
     assert dry_run.returncode == 0
     assert "https://github.com/Nowhitestar/meti/releases/download/v0.4.3" in dry_run.stdout
+    assert "meti-claude-plugin-v0.4.3.zip" in dry_run.stdout
     assert list(tmp_path.iterdir()) == []
 
     invalid = subprocess.run(
