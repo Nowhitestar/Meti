@@ -13,6 +13,10 @@ SCRIPT = ROOT / "core" / "release.py"
 RELEASE_SCRIPT = ROOT / "scripts" / "release.py"
 
 
+def current_manifest() -> dict[str, object]:
+    return json.loads((ROOT / "release.json").read_text(encoding="utf-8"))
+
+
 def load_module() -> ModuleType:
     spec = importlib.util.spec_from_file_location("release", SCRIPT)
     assert spec and spec.loader
@@ -33,11 +37,12 @@ def load_release_script() -> ModuleType:
 
 def test_release_manifest_loads_and_validates_current_tree() -> None:
     release = load_module()
+    expected = current_manifest()
 
     manifest = release.load_release_manifest(ROOT)
 
-    assert manifest["version"] == "0.4.3"
-    assert manifest["tag"] == "v0.4.3"
+    assert manifest["version"] == expected["version"]
+    assert manifest["tag"] == f"v{expected['version']}"
     assert manifest["channel"] == "stable"
     assert release.validate_release_manifest(manifest) == []
 
@@ -88,6 +93,9 @@ def test_publish_dry_run_reports_gate_artifacts_and_release_commands(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     release_script = load_release_script()
+    manifest = current_manifest()
+    version = str(manifest["version"])
+    tag = f"v{version}"
 
     def fail_run(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("dry-run must not call subprocess.run")
@@ -95,17 +103,17 @@ def test_publish_dry_run_reports_gate_artifacts_and_release_commands(
     monkeypatch.setattr(release_script.subprocess, "run", fail_run)
 
     exit_code = release_script.main(
-        ["--project-root", str(ROOT), "publish", "--version", "0.4.3", "--dry-run"]
+        ["--project-root", str(ROOT), "publish", "--version", version, "--dry-run"]
     )
 
     out = capsys.readouterr().out
     assert exit_code == 0
     assert "python3 scripts/check_release.py" in out
-    assert "meti-claude-plugin-v0.4.3.zip" in out
-    assert "meti-openclaw-skill-v0.4.3.zip" in out
+    assert f"meti-claude-plugin-{tag}.zip" in out
+    assert f"meti-openclaw-skill-{tag}.zip" in out
     assert "SHA256SUMS" in out
-    assert "git tag v0.4.3" in out
-    assert "gh release create v0.4.3" in out
+    assert f"git tag {tag}" in out
+    assert f"gh release create {tag}" in out
 
 
 def test_release_script_rejects_invalid_stable_versions() -> None:

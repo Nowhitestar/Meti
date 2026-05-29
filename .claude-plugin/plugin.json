@@ -1,6 +1,6 @@
 {
   "name": "meti",
-  "version": "0.4.3",
+  "version": "0.5.0",
   "description": "One manifest, every Chinese-platform you publish to. Drafts on WeChat OA · Xiaohongshu · X Articles · X Threads · Substack · WeChat 贴图 from a single YAML.",
   "author": {
     "name": "Lewis Liao",

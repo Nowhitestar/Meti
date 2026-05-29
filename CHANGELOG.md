@@ -4,6 +4,8 @@ All notable changes to Meti are documented here. Versions follow [Semantic Versi
 
 ## Unreleased
 
+## 0.5.0 - 2026-05-29
+
 ### Added
 
 - Release readiness gate: `python scripts/check_release.py` validates version
