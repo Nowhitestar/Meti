@@ -1,7 +1,7 @@
 ---
 name: Multi-media Publisher
 description: This skill should be used when the user asks to "多媒体发布", "多平台发布", "同步发布小红书和微信图文", "发微信图文和小红书", "发布长文章到公众号/X/Substack", "cross-post", "publish everywhere", or wants one content package adapted and published/drafted across Xiaohongshu, WeChat image posts, WeChat Official Account articles, X Articles/Twitter, Substack, or future video platforms; or "新发布", "帮我发一组到", "wizard", "guide me to publish".
-version: 0.5.0
+version: 0.5.1
 ---
 
 # Multi-media Publisher / 多媒体发布

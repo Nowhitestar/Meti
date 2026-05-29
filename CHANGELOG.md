@@ -4,6 +4,10 @@ All notable changes to Meti are documented here. Versions follow [Semantic Versi
 
 ## Unreleased
 
+## 0.5.1 - 2026-05-29
+
+- Release prepared.
+
 ## 0.5.0 - 2026-05-29
 
 ### Added
